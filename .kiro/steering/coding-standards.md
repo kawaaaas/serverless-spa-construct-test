@@ -1,5 +1,19 @@
 # コーディング規約
 
+## コード品質チェック
+
+ファイルを修正・作成したら、必ず以下のコマンドを実行すること：
+
+```bash
+# 1. Prettierでフォーマット
+npm run format
+
+# 2. ESLintでリントチェック
+npm run lint
+```
+
+エラーがある場合は修正してから次の作業に進むこと。
+
 ## 言語設定
 
 - Spec・設計ドキュメント: 日本語で記述
@@ -72,7 +86,7 @@ new Bucket(this, 'Bucket1', {});
 export interface MyConstructProps {
   // Required
   readonly tableName: string;
-  
+
   // Optional with defaults
   readonly timeout?: Duration;
   readonly memorySize?: number;
@@ -86,10 +100,10 @@ export class MyConstruct extends Construct {
   // Expose created resources as readonly
   public readonly bucket: IBucket;
   public readonly table: ITable;
-  
+
   constructor(scope: Construct, id: string, props: MyConstructProps) {
     super(scope, id);
-    
+
     this.bucket = new Bucket(this, 'Bucket', {});
     this.table = new Table(this, 'Table', {});
   }
@@ -101,7 +115,7 @@ export class MyConstruct extends Construct {
 ```typescript
 /**
  * High-level construct for deploying a serverless SPA.
- * 
+ *
  * This construct creates all necessary resources including:
  * - CloudFront distribution
  * - S3 bucket for static hosting
