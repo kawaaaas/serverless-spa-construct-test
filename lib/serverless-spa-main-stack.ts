@@ -27,31 +27,5 @@ export class ServerlessSpaMainStack extends cdk.Stack {
         },
       },
     });
-
-    // Output useful values
-    new cdk.CfnOutput(this, 'DistributionDomainName', {
-      value: this.serverlessSpa.distributionDomainName,
-      description: 'CloudFront distribution domain name',
-    });
-
-    new cdk.CfnOutput(this, 'ApiUrl', {
-      value: this.serverlessSpa.apiUrl,
-      description: 'API Gateway URL',
-    });
-
-    new cdk.CfnOutput(this, 'UserPoolId', {
-      value: this.serverlessSpa.userPoolId,
-      description: 'Cognito User Pool ID',
-    });
-
-    new cdk.CfnOutput(this, 'UserPoolClientId', {
-      value: this.serverlessSpa.userPoolClientId,
-      description: 'Cognito User Pool Client ID',
-    });
-
-    new cdk.CfnOutput(this, 'TableName', {
-      value: this.serverlessSpa.tableName,
-      description: 'DynamoDB table name',
-    });
   }
 }
