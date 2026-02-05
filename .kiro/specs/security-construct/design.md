@@ -89,13 +89,86 @@ lib/
 
 ```typescript
 import { RemovalPolicy } from 'aws-cdk-lib';
+import { CfnWebACL } from 'aws-cdk-lib/aws-wafv2';
+
+/**
+ * WAF rule configuration for custom rules.
+ */
+export interface WafRuleConfig {
+  /**
+   * Rule name.
+   */
+  readonly name: string;
+
+  /**
+   * Rule priority. Lower numbers are evaluated first.
+   */
+  readonly priority: number;
+
+  /**
+   * Rule statement defining the match conditions.
+   */
+  readonly statement: CfnWebACL.StatementProperty;
+
+  /**
+   * Action to take when the rule matches.
+   * Use { block: {} } to block, { allow: {} } to allow, { count: {} } to count only.
+   * For managed rule groups, use overrideAction instead.
+   */
+  readonly action?: CfnWebACL.RuleActionProperty;
+
+  /**
+   * Override action for managed rule groups.
+   * Use { none: {} } to use the rule group's actions, or { count: {} } to count only.
+   */
+  readonly overrideAction?: CfnWebACL.OverrideActionProperty;
+
+  /**
+   * CloudWatch metrics configuration.
+   */
+  readonly visibilityConfig?: CfnWebACL.VisibilityConfigProperty;
+}
 
 export interface WafConstructProps {
   /**
    * Rate limit for WAF (requests per 5 minutes).
+   * Set to 0 to disable the default rate limiting rule.
    * @default 2000
    */
   readonly rateLimit?: number;
+
+  /**
+   * Whether to include AWS Managed Rules Common Rule Set.
+   * @default true
+   */
+  readonly enableCommonRuleSet?: boolean;
+
+  /**
+   * Whether to include AWS Managed Rules SQLi Rule Set.
+   * @default true
+   */
+  readonly enableSqliRuleSet?: boolean;
+
+  /**
+   * Custom WAF rules to add.
+   * These rules will be added after the default rules.
+   * @default - No custom rules
+   */
+  readonly customRules?: WafRuleConfig[];
+
+  /**
+   * Completely override all rules with custom configuration.
+   * When provided, rateLimit, enableCommonRuleSet, enableSqliRuleSet, and customRules are ignored.
+   * Use this for full control over WAF rules.
+   * @default - Uses default rules with optional customRules
+   */
+  readonly rules?: CfnWebACL.RuleProperty[];
+
+  /**
+   * Default action when no rules match.
+   * @default { allow: {} }
+   */
+  readonly defaultAction?: CfnWebACL.DefaultActionProperty;
 
   /**
    * Removal policy for resources.
@@ -383,11 +456,53 @@ export interface ServerlessSpaProps {
 
 ### WAF WebACL ルール構成
 
-| ルール名                     | 優先度 | アクション | 説明                             |
-| ---------------------------- | ------ | ---------- | -------------------------------- |
-| RateLimitRule                | 1      | Block      | レート制限（デフォルト2000/5分） |
-| AWSManagedRulesCommonRuleSet | 2      | Block      | 一般的なWeb攻撃対策              |
-| AWSManagedRulesSQLiRuleSet   | 3      | Block      | SQLインジェクション対策          |
+#### デフォルトルール
+
+| ルール名                     | 優先度 | アクション | 説明                             | 制御プロパティ        |
+| ---------------------------- | ------ | ---------- | -------------------------------- | --------------------- |
+| RateLimitRule                | 1      | Block      | レート制限（デフォルト2000/5分） | `rateLimit`           |
+| AWSManagedRulesCommonRuleSet | 2      | Block      | 一般的なWeb攻撃対策              | `enableCommonRuleSet` |
+| AWSManagedRulesSQLiRuleSet   | 3      | Block      | SQLインジェクション対策          | `enableSqliRuleSet`   |
+
+#### ルールカスタマイズオプション
+
+| オプション            | 説明                                                            |
+| --------------------- | --------------------------------------------------------------- |
+| `enableCommonRuleSet` | `false`でAWSManagedRulesCommonRuleSetを無効化                   |
+| `enableSqliRuleSet`   | `false`でAWSManagedRulesSQLiRuleSetを無効化                     |
+| `rateLimit`           | `0`でレート制限ルールを無効化、正の値でカスタムレート制限を設定 |
+| `customRules`         | デフォルトルールの後に追加するカスタムルール                    |
+| `rules`               | 全ルールを完全に上書き（他のルール設定は無視される）            |
+
+#### カスタムルール使用例
+
+```typescript
+// カスタムルールを追加
+const waf = new WafConstruct(this, 'Waf', {
+  customRules: [
+    {
+      name: 'BlockBadBots',
+      priority: 10,
+      statement: {
+        byteMatchStatement: {
+          searchString: 'BadBot',
+          fieldToMatch: { singleHeader: { name: 'user-agent' } },
+          textTransformations: [{ priority: 0, type: 'LOWERCASE' }],
+          positionalConstraint: 'CONTAINS',
+        },
+      },
+      action: { block: {} },
+    },
+  ],
+});
+
+// 全ルールを完全にカスタマイズ
+const waf = new WafConstruct(this, 'Waf', {
+  rules: [
+    // 独自のルール構成
+  ],
+});
+```
 
 ### Secrets Manager シークレット構造
 
@@ -477,9 +592,15 @@ _正当性プロパティとは、システムの全ての有効な実行にお�
 
 ### プロパティ1: WAF WebACL作成と構成
 
-_任意の_ WafConstructインスタンスにおいて、SCOPE: CLOUDFRONTのWAF WebACLが作成され、レート制限ルール、AWSManagedRulesCommonRuleSet、AWSManagedRulesSQLiRuleSetの3つのルールが含まれる。
+_任意の_ WafConstructインスタンスにおいて、SCOPE: CLOUDFRONTのWAF WebACLが作成される。デフォルトでは、レート制限ルール、AWSManagedRulesCommonRuleSet、AWSManagedRulesSQLiRuleSetの3つのルールが含まれる。
 
 **検証対象: 要件 1.1, 1.2, 1.3, 1.4**
+
+### プロパティ1.1: WAFルールカスタマイズ
+
+_任意の_ WafConstructインスタンスにおいて、`enableCommonRuleSet`、`enableSqliRuleSet`、`rateLimit`プロパティでデフォルトルールの有効/無効を制御できる。`customRules`でカスタムルールを追加でき、`rules`で全ルールを完全に上書きできる。
+
+**検証対象: 要件 1.7, 1.8, 1.9**
 
 ### プロパティ2: Secrets Managerとローテーション設定
 

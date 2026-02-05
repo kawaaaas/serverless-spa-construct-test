@@ -1,17 +1,25 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib/core';
-import { ServerlessSpaConstructTestStack } from '../lib/serverless-spa-construct-test-stack';
+import { ServerlessSpaMainStack } from '../lib/serverless-spa-main-stack';
+import { ServerlessSpaSecurityStack } from '../lib/serverless-spa-security-stack';
 
 const app = new cdk.App();
-new ServerlessSpaConstructTestStack(app, 'ServerlessSpaConstructTestStack', {
-  /* If you don't specify 'env', this stack will be environment-agnostic.
-   * Account/Region-dependent features and context lookups will not work,
-   * but a single synthesized template can be deployed anywhere. */
-  /* Uncomment the next line to specialize this stack for the AWS Account
-   * and Region that are implied by the current CLI configuration. */
-  // env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
-  /* Uncomment the next line if you know exactly what Account and Region you
-   * want to deploy the stack to. */
-  // env: { account: '123456789012', region: 'us-east-1' },
-  /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
+
+// Security stack must be deployed in us-east-1 (required for CloudFront WAF)
+const securityStack = new ServerlessSpaSecurityStack(app, 'ServerlessSpaSecurityStack', {
+  env: {
+    region: 'us-east-1',
+  },
+  crossRegionReferences: true,
 });
+
+// Main stack can be deployed in any region
+const mainStack = new ServerlessSpaMainStack(app, 'ServerlessSpaMainStack', {
+  env: {
+    region: process.env.CDK_DEFAULT_REGION ?? 'ap-northeast-1',
+  },
+  crossRegionReferences: true,
+});
+
+// Main stack depends on security stack for SSM parameters
+mainStack.addDependency(securityStack);

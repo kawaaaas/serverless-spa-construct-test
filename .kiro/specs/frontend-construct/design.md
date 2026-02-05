@@ -4,6 +4,14 @@
 
 FrontendConstructは、S3バケットとCloudFrontディストリビューションを作成する低レベルCDKコンストラクトである。Viteでビルドした静的ファイルをホスティングし、CloudFrontをエントリーポイントとして提供する。OAC（Origin Access Control）を使用してS3への直接アクセスを防ぎ、CloudFront Functionsを使用してSPAのクライアントサイドルーティングをサポートする。オプションでAPI Gateway（/api/\*）へのルーティングをサポートし、カスタムヘッダーによるアクセス制限を実現する。
 
+### カスタムドメイン対応
+
+- カスタムドメイン名（`domainName`）と代替ドメイン名（`alternativeDomainNames`）をサポート
+- ACM証明書の自動発行機能（`hostedZoneId` + `zoneName`指定時）
+- 既存の証明書を使用することも可能（`certificate`プロパティ）
+- Route53 DNSレコードの自動作成
+- 未指定時はCloudFrontデフォルトドメイン（`*.cloudfront.net`）を使用
+
 ## アーキテクチャ
 
 ```
@@ -61,6 +69,9 @@ FrontendConstructは、S3バケットとCloudFrontディストリビューショ
 │  - bucket: IBucket                                                               │
 │  - distribution: IDistribution                                                   │
 │  - distributionDomainName: string                                                │
+│  - customDomainName?: string                                                     │
+│  - certificate?: ICertificate                                                    │
+│  - dnsRecord?: ARecord                                                           │
 │  - customHeaderName?: string (when api is provided)                              │
 │  - customHeaderSecret?: string (when api is provided)                            │
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -74,6 +85,7 @@ FrontendConstructは、S3バケットとCloudFrontディストリビューショ
 import { BucketProps } from 'aws-cdk-lib/aws-s3';
 import { DistributionProps } from 'aws-cdk-lib/aws-cloudfront';
 import { IRestApi } from 'aws-cdk-lib/aws-apigateway';
+import { ICertificate } from 'aws-cdk-lib/aws-certificatemanager';
 
 export interface FrontendConstructProps {
   /**
@@ -81,6 +93,46 @@ export interface FrontendConstructProps {
    * If provided, requests to /api/* will be routed to this API Gateway.
    */
   readonly api?: IRestApi;
+
+  /**
+   * Optional WAF WebACL ARN to associate with the CloudFront distribution.
+   * Must be a WAF WebACL with CLOUDFRONT scope (deployed in us-east-1).
+   */
+  readonly webAclArn?: string;
+
+  /**
+   * Custom domain name for the CloudFront distribution.
+   * If provided, certificate must also be provided, or hostedZoneId + zoneName for auto-creation.
+   * @example 'www.example.com'
+   */
+  readonly domainName?: string;
+
+  /**
+   * Additional domain names (aliases) for the CloudFront distribution.
+   * @example ['example.com', 'app.example.com']
+   */
+  readonly alternativeDomainNames?: string[];
+
+  /**
+   * ACM certificate for the custom domain.
+   * If not provided but domainName and hostedZone are set, a certificate will be automatically created.
+   * Must be in us-east-1 region for CloudFront.
+   */
+  readonly certificate?: ICertificate;
+
+  /**
+   * Route53 hosted zone ID for creating DNS records and certificate validation.
+   * Can be found in the Route53 console (e.g., 'Z1234567890ABC').
+   * Required along with zoneName for automatic certificate creation and DNS record.
+   */
+  readonly hostedZoneId?: string;
+
+  /**
+   * Route53 hosted zone name (domain name).
+   * Must match the zone name in Route53 (e.g., 'example.com').
+   * Required along with hostedZoneId for automatic certificate creation and DNS record.
+   */
+  readonly zoneName?: string;
 
   /**
    * Custom header name for API Gateway access restriction.
@@ -116,6 +168,8 @@ export interface FrontendConstructProps {
 import { Construct } from 'constructs';
 import { IBucket, Bucket } from 'aws-cdk-lib/aws-s3';
 import { IDistribution, Distribution } from 'aws-cdk-lib/aws-cloudfront';
+import { ICertificate } from 'aws-cdk-lib/aws-certificatemanager';
+import { ARecord } from 'aws-cdk-lib/aws-route53';
 
 export class FrontendConstruct extends Construct {
   /**
@@ -132,6 +186,21 @@ export class FrontendConstruct extends Construct {
    * The domain name of the CloudFront distribution.
    */
   public readonly distributionDomainName: string;
+
+  /**
+   * The custom domain name if configured.
+   */
+  public readonly customDomainName?: string;
+
+  /**
+   * The ACM certificate (auto-created or provided).
+   */
+  public readonly certificate?: ICertificate;
+
+  /**
+   * The Route53 A record if created.
+   */
+  public readonly dnsRecord?: ARecord;
 
   /**
    * The custom header name used for API Gateway access restriction.
@@ -202,6 +271,23 @@ function handler(event) {
 | originRequestPolicy | OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER | 全ヘッダーを転送（認証用）      |
 | customHeaderName    | 'x-origin-verify'                                 | API Gateway制限用の標準的な名前 |
 | customHeaderSecret  | UUID v4                                           | セキュアなランダム値            |
+
+#### カスタムドメイン設定
+
+| 設定項目                             | 条件                         | 動作                                                    |
+| ------------------------------------ | ---------------------------- | ------------------------------------------------------- |
+| domainName未指定                     | -                            | CloudFrontデフォルトドメイン（\*.cloudfront.net）を使用 |
+| domainName + certificate             | 既存証明書を使用             | 指定された証明書でカスタムドメインを設定                |
+| domainName + hostedZoneId + zoneName | 証明書未指定                 | ACM証明書を自動発行、DNSレコードも自動作成              |
+| hostedZoneId/zoneName                | 片方のみ指定                 | エラー（両方必須）                                      |
+| domainName単独                       | certificate/hostedZone未指定 | エラー（証明書が必要）                                  |
+
+#### 証明書自動発行の仕組み
+
+1. `hostedZoneId`と`zoneName`から`HostedZone.fromHostedZoneAttributes()`でHostedZoneを参照
+2. `Certificate`を作成し、`CertificateValidation.fromDns(hostedZone)`でDNS検証を設定
+3. `alternativeDomainNames`がある場合は`subjectAlternativeNames`として追加
+4. Route53に自動でCNAMEレコードが作成され、証明書が検証される
 
 ### CloudFront Function ロジック
 
@@ -293,6 +379,30 @@ _任意の_ FrontendConstructインスタンスにおいて、apiが指定され
 _任意の_ FrontendConstructインスタンスにおいて、bucket、distribution、distributionDomainNameプロパティが正しく公開され、作成されたリソースの情報と一致する。apiが指定された場合は、customHeaderNameとcustomHeaderSecretも公開される。
 
 **検証対象: 要件 6.1, 6.2, 6.3, 6.4, 6.5**
+
+### プロパティ14: カスタムドメイン設定
+
+_任意の_ FrontendConstructインスタンスにおいて、domainNameが指定された場合、CloudFrontディストリビューションにカスタムドメインが設定される。certificateまたは（hostedZoneId + zoneName）が必須である。
+
+**検証対象: 要件 8.1, 8.2**
+
+### プロパティ15: 証明書自動発行
+
+_任意の_ FrontendConstructインスタンスにおいて、domainNameとhostedZoneId/zoneNameが指定され、certificateが未指定の場合、ACM証明書が自動的に作成され、DNS検証が設定される。
+
+**検証対象: 要件 8.3**
+
+### プロパティ16: DNSレコード自動作成
+
+_任意の_ FrontendConstructインスタンスにおいて、domainNameとhostedZoneId/zoneNameが指定された場合、Route53にAレコードが自動的に作成され、CloudFrontディストリビューションをターゲットとする。
+
+**検証対象: 要件 8.4**
+
+### プロパティ17: デフォルトドメイン使用
+
+_任意の_ FrontendConstructインスタンスにおいて、domainNameが未指定の場合、CloudFrontのデフォルトドメイン（\*.cloudfront.net）が使用される。
+
+**検証対象: 要件 8.5**
 
 ## エラーハンドリング
 

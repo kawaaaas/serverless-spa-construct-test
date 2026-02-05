@@ -1,6 +1,11 @@
 import { Duration, RemovalPolicy } from 'aws-cdk-lib';
 import { IRestApi } from 'aws-cdk-lib/aws-apigateway';
 import {
+  Certificate,
+  CertificateValidation,
+  ICertificate,
+} from 'aws-cdk-lib/aws-certificatemanager';
+import {
   AllowedMethods,
   CachePolicy,
   Function as CloudFrontFunction,
@@ -15,6 +20,8 @@ import {
   ViewerProtocolPolicy,
 } from 'aws-cdk-lib/aws-cloudfront';
 import { HttpOrigin, S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
+import { ARecord, HostedZone, IHostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
+import { CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { BlockPublicAccess, Bucket, BucketProps, IBucket } from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 import * as crypto from 'crypto';
@@ -34,6 +41,40 @@ export interface FrontendConstructProps {
    * Must be a WAF WebACL with CLOUDFRONT scope (deployed in us-east-1).
    */
   readonly webAclArn?: string;
+
+  /**
+   * Custom domain name for the CloudFront distribution.
+   * If provided, certificate must also be provided.
+   * @example 'www.example.com'
+   */
+  readonly domainName?: string;
+
+  /**
+   * Additional domain names (aliases) for the CloudFront distribution.
+   * @example ['example.com', 'app.example.com']
+   */
+  readonly alternativeDomainNames?: string[];
+
+  /**
+   * ACM certificate for the custom domain.
+   * If not provided but domainName and hostedZone are set, a certificate will be automatically created.
+   * Must be in us-east-1 region for CloudFront.
+   */
+  readonly certificate?: ICertificate;
+
+  /**
+   * Route53 hosted zone ID for creating DNS records and certificate validation.
+   * Can be found in the Route53 console (e.g., 'Z1234567890ABC').
+   * Required along with zoneName for automatic certificate creation and DNS record.
+   */
+  readonly hostedZoneId?: string;
+
+  /**
+   * Route53 hosted zone name (domain name).
+   * Must match the zone name in Route53 (e.g., 'example.com').
+   * Required along with hostedZoneId for automatic certificate creation and DNS record.
+   */
+  readonly zoneName?: string;
 
   /**
    * Custom header name for API Gateway access restriction.
@@ -71,6 +112,7 @@ export interface FrontendConstructProps {
  * - CloudFront distribution with SPA routing support via CloudFront Functions
  * - Optional API Gateway routing for /api/* paths
  * - Custom header support for API Gateway access restriction
+ * - Optional custom domain with ACM certificate and Route53 DNS record
  */
 export class FrontendConstruct extends Construct {
   /**
@@ -89,6 +131,21 @@ export class FrontendConstruct extends Construct {
   public readonly distributionDomainName: string;
 
   /**
+   * The custom domain name if configured.
+   */
+  public readonly customDomainName?: string;
+
+  /**
+   * The ACM certificate (auto-created or provided).
+   */
+  public readonly certificate?: ICertificate;
+
+  /**
+   * The Route53 A record if created.
+   */
+  public readonly dnsRecord?: ARecord;
+
+  /**
    * The custom header name used for API Gateway access restriction.
    * Only available when api is provided.
    */
@@ -102,6 +159,43 @@ export class FrontendConstruct extends Construct {
 
   constructor(scope: Construct, id: string, props?: FrontendConstructProps) {
     super(scope, id);
+
+    // Validate custom domain configuration
+    if (props?.domainName && !props?.certificate && !(props?.hostedZoneId && props?.zoneName)) {
+      throw new Error(
+        'Either certificate or (hostedZoneId + zoneName) is required when domainName is provided. ' +
+          'Provide hostedZoneId and zoneName for automatic certificate creation, or provide an existing certificate.'
+      );
+    }
+
+    // Validate hostedZoneId and zoneName are provided together
+    if ((props?.hostedZoneId && !props?.zoneName) || (!props?.hostedZoneId && props?.zoneName)) {
+      throw new Error('Both hostedZoneId and zoneName must be provided together.');
+    }
+
+    // Look up hosted zone if hostedZoneId and zoneName are provided
+    let hostedZone: IHostedZone | undefined;
+    if (props?.hostedZoneId && props?.zoneName) {
+      hostedZone = HostedZone.fromHostedZoneAttributes(this, 'HostedZone', {
+        hostedZoneId: props.hostedZoneId,
+        zoneName: props.zoneName,
+      });
+    }
+
+    // Auto-create certificate if domainName and hostedZone are provided but certificate is not
+    let certificate = props?.certificate;
+    if (props?.domainName && hostedZone && !certificate) {
+      // Build subject alternative names from alternativeDomainNames
+      const subjectAlternativeNames = props.alternativeDomainNames;
+
+      certificate = new Certificate(this, 'Certificate', {
+        domainName: props.domainName,
+        subjectAlternativeNames,
+        validation: CertificateValidation.fromDns(hostedZone),
+      });
+    }
+
+    this.certificate = certificate;
 
     // Set custom header values only when api is provided
     if (props?.api) {
@@ -189,6 +283,15 @@ function handler(event) {
       };
     }
 
+    // Build domain names array for CloudFront
+    const domainNames: string[] = [];
+    if (props?.domainName) {
+      domainNames.push(props.domainName);
+    }
+    if (props?.alternativeDomainNames) {
+      domainNames.push(...props.alternativeDomainNames);
+    }
+
     const distribution = new Distribution(this, 'Distribution', {
       defaultBehavior: {
         origin: S3BucketOrigin.withOriginAccessControl(bucket),
@@ -205,10 +308,23 @@ function handler(event) {
       errorResponses,
       // Apply WAF WebACL if provided
       ...(props?.webAclArn && { webAclId: props.webAclArn }),
+      // Apply custom domain configuration if provided
+      ...(domainNames.length > 0 && { domainNames }),
+      ...(certificate && { certificate }),
       ...props?.distributionProps,
     });
 
     this.distribution = distribution;
     this.distributionDomainName = distribution.distributionDomainName;
+    this.customDomainName = props?.domainName;
+
+    // Create Route53 A record if hostedZone and domainName are provided
+    if (hostedZone && props?.domainName) {
+      this.dnsRecord = new ARecord(this, 'DnsRecord', {
+        zone: hostedZone,
+        recordName: props.domainName,
+        target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
+      });
+    }
   }
 }

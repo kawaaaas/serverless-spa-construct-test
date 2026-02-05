@@ -54,6 +54,14 @@ export interface ApiConstructProps {
   readonly secretArn?: string;
 
   /**
+   * Path to the Lambda handler entry file.
+   * If not provided, uses the default handler at lambda/handler.ts.
+   * @default - Uses built-in handler at lambda/handler.ts
+   * @example './src/api/handler.ts'
+   */
+  readonly entry?: string;
+
+  /**
    * Additional Lambda function properties to override defaults.
    * These will be merged with the default configuration.
    */
@@ -108,12 +116,15 @@ export class ApiConstruct extends Construct {
     this.customHeaderName = props.customHeaderName ?? 'x-origin-verify';
     this.customHeaderSecret = props.customHeaderSecret ?? crypto.randomUUID();
 
+    // Determine Lambda entry point
+    const entry = props.entry ?? path.join(__dirname, '../../lambda/handler.ts');
+
     // Create Lambda function
     const lambdaHandler = new NodejsFunction(this, 'Handler', {
       runtime: Runtime.NODEJS_20_X,
       memorySize: 128,
       timeout: Duration.seconds(30),
-      entry: path.join(__dirname, '../lambda/handler.ts'),
+      entry,
       handler: 'handler',
       environment: {
         TABLE_NAME: props.table.tableName,

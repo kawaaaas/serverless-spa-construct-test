@@ -4,6 +4,12 @@
 
 ApiConstructは、API Gateway（REST）とLambda関数を作成する低レベルCDKコンストラクトである。CloudFront経由のみアクセス可能なセキュアなAPI構成を提供し、カスタムヘッダーによるアクセス制限とオプションのCognito認証をサポートする。Propsパターンにより柔軟なカスタマイズが可能で、他のコンストラクト（FrontendConstruct、ServerlessSpa等）から参照できるようAPI情報を公開する。
 
+### Lambdaハンドラーのカスタマイズ
+
+- `entry`プロパティでカスタムLambdaハンドラーのパスを指定可能
+- 未指定時はデフォルトの`lib/lambda/handler.ts`を使用
+- ユーザーは独自のビジネスロジックを実装したハンドラーを使用できる
+
 ## アーキテクチャ
 
 ```
@@ -98,6 +104,20 @@ export interface ApiConstructProps {
   readonly customHeaderSecret?: string;
 
   /**
+   * Optional Secrets Manager secret ARN for custom header validation.
+   * If provided, Lambda will be granted read permission to this secret.
+   */
+  readonly secretArn?: string;
+
+  /**
+   * Path to the Lambda handler entry file.
+   * If not provided, uses the default handler at lib/lambda/handler.ts.
+   * @default - Uses built-in handler at lib/lambda/handler.ts
+   * @example './src/api/handler.ts'
+   */
+  readonly entry?: string;
+
+  /**
    * Additional Lambda function properties to override defaults.
    * These will be merged with the default configuration.
    */
@@ -158,12 +178,13 @@ export class ApiConstruct extends Construct {
 
 #### Lambda関数
 
-| 設定項目   | デフォルト値  | 理由                              |
-| ---------- | ------------- | --------------------------------- |
-| runtime    | Node.js 20.x  | 最新のLTSバージョン               |
-| memorySize | 128 MB        | コスト最適化（最小構成）          |
-| timeout    | 30秒          | API Gateway統合の最大タイムアウト |
-| handler    | index.handler | 標準的なエントリーポイント        |
+| 設定項目   | デフォルト値          | 理由                                 |
+| ---------- | --------------------- | ------------------------------------ |
+| runtime    | Node.js 20.x          | 最新のLTSバージョン                  |
+| memorySize | 128 MB                | コスト最適化（最小構成）             |
+| timeout    | 30秒                  | API Gateway統合の最大タイムアウト    |
+| handler    | index.handler         | 標準的なエントリーポイント           |
+| entry      | lib/lambda/handler.ts | デフォルトハンドラー（カスタム可能） |
 
 #### REST API
 
@@ -227,6 +248,12 @@ _任意の_ restApiProps設定において、指定されたプロパティが�
 _任意の_ lambdaProps設定において、指定されたプロパティがデフォルト設定を正しく上書きする。例えば、memorySize、timeout、environmentなどのプロパティが指定された値で設定される。
 
 **検証対象: 要件 2.7**
+
+### プロパティ3: entryカスタマイズ
+
+_任意の_ ApiConstructインスタンスにおいて、entryが指定された場合、指定されたパスのLambdaハンドラーが使用される。未指定の場合はデフォルトの`lib/lambda/handler.ts`が使用される。
+
+**検証対象: 要件 2.8**
 
 ## エラーハンドリング
 
