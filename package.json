@@ -15,6 +15,8 @@
     "format:check": "prettier --check 'lib/**/*.ts' 'bin/**/*.ts' 'test/**/*.ts'"
   },
   "devDependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.983.0",
+    "@aws-sdk/client-ssm": "^3.983.0",
     "@eslint/js": "^9.39.2",
     "@types/aws-lambda": "^8.10.160",
     "@types/jest": "^30",

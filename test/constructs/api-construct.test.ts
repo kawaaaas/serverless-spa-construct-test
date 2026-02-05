@@ -297,4 +297,61 @@ describe('ApiConstruct', () => {
       expect(typeof api.customHeaderSecret).toBe('string');
     });
   });
+
+  describe('Secrets Manager Integration', () => {
+    test('grants Lambda Secrets Manager read permission when secretArn is provided', () => {
+      new ApiConstruct(stack, 'Api', {
+        table,
+        secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
+      });
+
+      const template = Template.fromStack(stack);
+      // CDK creates separate policies for different grants
+      // Check that there's a policy with Secrets Manager permissions
+      const policies = template.findResources('AWS::IAM::Policy');
+      let hasSecretsManagerPermission = false;
+
+      for (const policyKey of Object.keys(policies)) {
+        const policy = policies[policyKey];
+        const statements = policy.Properties?.PolicyDocument?.Statement || [];
+        for (const statement of statements) {
+          if (Array.isArray(statement.Action)) {
+            if (
+              statement.Action.includes('secretsmanager:GetSecretValue') &&
+              statement.Action.includes('secretsmanager:DescribeSecret')
+            ) {
+              hasSecretsManagerPermission = true;
+              // Verify the resource is the correct secret ARN
+              expect(statement.Resource).toBe(
+                'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123'
+              );
+              expect(statement.Effect).toBe('Allow');
+            }
+          }
+        }
+      }
+
+      expect(hasSecretsManagerPermission).toBe(true);
+    });
+
+    test('does not grant Secrets Manager permission when secretArn is not provided', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      const policies = template.findResources('AWS::IAM::Policy');
+
+      // Check that no policy contains secretsmanager:GetSecretValue action
+      for (const policyKey of Object.keys(policies)) {
+        const policy = policies[policyKey];
+        const statements = policy.Properties?.PolicyDocument?.Statement || [];
+        for (const statement of statements) {
+          if (Array.isArray(statement.Action)) {
+            expect(statement.Action).not.toContain('secretsmanager:GetSecretValue');
+          } else {
+            expect(statement.Action).not.toBe('secretsmanager:GetSecretValue');
+          }
+        }
+      }
+    });
+  });
 });

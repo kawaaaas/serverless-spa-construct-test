@@ -48,6 +48,12 @@ export interface ApiConstructProps {
   readonly customHeaderSecret?: string;
 
   /**
+   * Optional Secrets Manager secret ARN for custom header validation.
+   * If provided, Lambda will be granted read permission to this secret.
+   */
+  readonly secretArn?: string;
+
+  /**
    * Additional Lambda function properties to override defaults.
    * These will be merged with the default configuration.
    */
@@ -118,6 +124,16 @@ export class ApiConstruct extends Construct {
 
     // Grant Lambda read/write access to DynamoDB table
     props.table.grantReadWriteData(lambdaHandler);
+
+    // Grant Lambda read access to Secrets Manager secret if secretArn is provided
+    if (props.secretArn) {
+      lambdaHandler.addToRolePolicy(
+        new PolicyStatement({
+          actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+          resources: [props.secretArn],
+        })
+      );
+    }
 
     this.handler = lambdaHandler;
 

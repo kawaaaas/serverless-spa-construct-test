@@ -309,6 +309,34 @@ describe('FrontendConstruct', () => {
     });
   });
 
+  describe('WAF WebACL', () => {
+    test('applies WAF WebACL when webAclArn is provided', () => {
+      const webAclArn =
+        'arn:aws:wafv2:us-east-1:123456789012:global/webacl/test-acl/12345678-1234-1234-1234-123456789012';
+      new FrontendConstruct(stack, 'Frontend', {
+        webAclArn,
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::CloudFront::Distribution', {
+        DistributionConfig: {
+          WebACLId: webAclArn,
+        },
+      });
+    });
+
+    test('does not apply WAF WebACL when webAclArn is not provided', () => {
+      new FrontendConstruct(stack, 'Frontend');
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::CloudFront::Distribution', {
+        DistributionConfig: {
+          WebACLId: Match.absent(),
+        },
+      });
+    });
+  });
+
   describe('Output Properties', () => {
     test('exposes bucket property', () => {
       const frontend = new FrontendConstruct(stack, 'Frontend');

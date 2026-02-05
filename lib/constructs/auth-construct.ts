@@ -61,19 +61,14 @@ export class AuthConstruct extends Construct {
     super(scope, id);
 
     // Create User Pool with defaults
-    // Requirements: 1.1, 1.2, 1.3, 1.4, 4.1, 4.2, 4.3, 6.1
     const userPool = new UserPool(this, 'UserPool', {
-      // Self sign-up enabled (Requirement 1.2)
       selfSignUpEnabled: true,
-      // Email as sign-in alias (Requirement 1.3)
       signInAliases: {
         email: true,
       },
-      // Auto-verify email (Requirement 1.4)
       autoVerify: {
         email: true,
       },
-      // Password policy (Requirements 4.1, 4.2, 4.3)
       passwordPolicy: {
         minLength: 8,
         requireLowercase: true,
@@ -81,25 +76,18 @@ export class AuthConstruct extends Construct {
         requireUppercase: false,
         requireSymbols: false,
       },
-      // Note: Removal policy is not set here (Requirement 6.1)
-      // It will be managed at the stack level
-      // Props override (Requirement 1.5, 4.4)
       ...props?.userPoolProps,
     });
 
     // Create User Pool Client with defaults
-    // Requirements: 2.1, 2.2, 2.3, 2.4, 2.5
     const userPoolClient = new UserPoolClient(this, 'UserPoolClient', {
       userPool,
-      // No client secret for SPA (Requirement 2.2)
       generateSecret: false,
-      // Auth flows (Requirements 2.3, 2.4)
       authFlows: {
         userSrp: true,
         custom: false,
         userPassword: false,
       },
-      // Props override (Requirement 2.5)
       ...props?.userPoolClientProps,
     });
 

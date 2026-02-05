@@ -472,4 +472,201 @@ describe('ServerlessSpa', () => {
       });
     });
   });
+
+  describe('Security Config', () => {
+    /**
+     * Validates: Requirements 5.1, 5.4
+     * Tests for cross-region SSM parameter retrieval via AwsCustomResource
+     */
+    test('creates AwsCustomResource when security property is specified', () => {
+      new ServerlessSpa(stack, 'App', {
+        security: {},
+      });
+
+      const template = Template.fromStack(stack);
+      // AwsCustomResource creates a Custom::AWS resource
+      template.resourceCountIs('Custom::AWS', 1);
+    });
+
+    test('does not create AwsCustomResource when security property is not specified', () => {
+      new ServerlessSpa(stack, 'App');
+
+      const template = Template.fromStack(stack);
+      // No Custom::AWS resource should be created
+      template.resourceCountIs('Custom::AWS', 0);
+    });
+
+    test('AwsCustomResource specifies us-east-1 region by default', () => {
+      new ServerlessSpa(stack, 'App', {
+        security: {},
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('Custom::AWS', {
+        Create: Match.stringLikeRegexp('"region":"us-east-1"'),
+        Update: Match.stringLikeRegexp('"region":"us-east-1"'),
+      });
+    });
+
+    test('AwsCustomResource uses custom securityRegion when specified', () => {
+      new ServerlessSpa(stack, 'App', {
+        security: {
+          securityRegion: 'eu-west-1',
+        },
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('Custom::AWS', {
+        Create: Match.stringLikeRegexp('"region":"eu-west-1"'),
+        Update: Match.stringLikeRegexp('"region":"eu-west-1"'),
+      });
+    });
+
+    test('AwsCustomResource retrieves SSM parameters with default prefix', () => {
+      new ServerlessSpa(stack, 'App', {
+        security: {},
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('Custom::AWS', {
+        Create: Match.stringLikeRegexp(
+          '/myapp/security/waf-acl-arn.*' +
+            '/myapp/security/custom-header-name.*' +
+            '/myapp/security/secret-arn'
+        ),
+      });
+    });
+
+    test('AwsCustomResource retrieves SSM parameters with custom prefix', () => {
+      new ServerlessSpa(stack, 'App', {
+        security: {
+          ssmPrefix: '/custom/prefix/',
+        },
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('Custom::AWS', {
+        Create: Match.stringLikeRegexp(
+          '/custom/prefix/waf-acl-arn.*' +
+            '/custom/prefix/custom-header-name.*' +
+            '/custom/prefix/secret-arn'
+        ),
+      });
+    });
+
+    test('exposes ssmParameterReader when security is specified', () => {
+      const spa = new ServerlessSpa(stack, 'App', {
+        security: {},
+      });
+
+      expect(spa.ssmParameterReader).toBeDefined();
+    });
+
+    test('ssmParameterReader is undefined when security is not specified', () => {
+      const spa = new ServerlessSpa(stack, 'App');
+
+      expect(spa.ssmParameterReader).toBeUndefined();
+    });
+
+    test('exposes webAclArn property when security is specified', () => {
+      const spa = new ServerlessSpa(stack, 'App', {
+        security: {},
+      });
+
+      expect(spa.webAclArn).toBeDefined();
+    });
+
+    test('exposes secretArn property when security is specified', () => {
+      const spa = new ServerlessSpa(stack, 'App', {
+        security: {},
+      });
+
+      expect(spa.secretArn).toBeDefined();
+    });
+
+    test('exposes securityCustomHeaderName property when security is specified', () => {
+      const spa = new ServerlessSpa(stack, 'App', {
+        security: {},
+      });
+
+      expect(spa.securityCustomHeaderName).toBeDefined();
+    });
+  });
+
+  describe('Security Integration', () => {
+    /**
+     * Validates: Requirements 5.2, 5.3, 6.1, 7.1
+     * Tests for CloudFront WAF application and Lambda Secrets Manager permissions
+     */
+    test('CloudFront has WebACLId when security property is specified', () => {
+      new ServerlessSpa(stack, 'App', {
+        security: {},
+      });
+
+      const template = Template.fromStack(stack);
+      // CloudFront distribution should have WebACLId property
+      // The value is a reference to the AwsCustomResource response
+      template.hasResourceProperties('AWS::CloudFront::Distribution', {
+        DistributionConfig: {
+          WebACLId: Match.anyValue(),
+        },
+      });
+    });
+
+    test('CloudFront does not have WebACLId when security property is not specified', () => {
+      new ServerlessSpa(stack, 'App');
+
+      const template = Template.fromStack(stack);
+      // CloudFront distribution should NOT have WebACLId property
+      template.hasResourceProperties('AWS::CloudFront::Distribution', {
+        DistributionConfig: Match.not(
+          Match.objectLike({
+            WebACLId: Match.anyValue(),
+          })
+        ),
+      });
+    });
+
+    test('Lambda has Secrets Manager permissions when security property is specified', () => {
+      new ServerlessSpa(stack, 'App', {
+        security: {},
+      });
+
+      const template = Template.fromStack(stack);
+      // Lambda should have secretsmanager:GetSecretValue permission
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: Match.arrayWith([
+                'secretsmanager:GetSecretValue',
+                'secretsmanager:DescribeSecret',
+              ]),
+              Effect: 'Allow',
+            }),
+          ]),
+        },
+      });
+    });
+
+    test('Lambda does not have Secrets Manager permissions when security property is not specified', () => {
+      new ServerlessSpa(stack, 'App');
+
+      const template = Template.fromStack(stack);
+      // Get all IAM policies
+      const policies = template.findResources('AWS::IAM::Policy');
+
+      // Check that no policy has secretsmanager actions
+      for (const policyKey of Object.keys(policies)) {
+        const policy = policies[policyKey];
+        const statements = policy.Properties?.PolicyDocument?.Statement || [];
+        for (const statement of statements) {
+          const actions = statement.Action || [];
+          const actionArray = Array.isArray(actions) ? actions : [actions];
+          expect(actionArray).not.toContain('secretsmanager:GetSecretValue');
+          expect(actionArray).not.toContain('secretsmanager:DescribeSecret');
+        }
+      }
+    });
+  });
 });

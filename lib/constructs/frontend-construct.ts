@@ -30,6 +30,12 @@ export interface FrontendConstructProps {
   readonly api?: IRestApi;
 
   /**
+   * Optional WAF WebACL ARN to associate with the CloudFront distribution.
+   * Must be a WAF WebACL with CLOUDFRONT scope (deployed in us-east-1).
+   */
+  readonly webAclArn?: string;
+
+  /**
    * Custom header name for API Gateway access restriction.
    * Only used when api is provided.
    * @default 'x-origin-verify'
@@ -197,6 +203,8 @@ function handler(event) {
       defaultRootObject: 'index.html',
       priceClass: PriceClass.PRICE_CLASS_100,
       errorResponses,
+      // Apply WAF WebACL if provided
+      ...(props?.webAclArn && { webAclId: props.webAclArn }),
       ...props?.distributionProps,
     });
 

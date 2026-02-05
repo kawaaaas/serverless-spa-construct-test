@@ -1,9 +1,36 @@
 import { RemovalPolicy, Tags } from 'aws-cdk-lib';
+import {
+  AwsCustomResource,
+  AwsCustomResourcePolicy,
+  PhysicalResourceId,
+} from 'aws-cdk-lib/custom-resources';
 import { Construct } from 'constructs';
 import { ApiConstruct, ApiConstructProps } from './api-construct';
 import { AuthConstruct, AuthConstructProps } from './auth-construct';
 import { DatabaseConstruct, DatabaseConstructProps } from './database-construct';
 import { FrontendConstruct, FrontendConstructProps } from './frontend-construct';
+
+/**
+ * Security configuration for cross-region WAF and custom header integration.
+ *
+ * This configuration enables ServerlessSpa to retrieve security settings
+ * from SSM Parameter Store in us-east-1 (where ServerlessSpaSecurityConstruct
+ * is deployed) and apply them to CloudFront and API Gateway.
+ */
+export interface SecurityConfig {
+  /**
+   * SSM Parameter Store prefix where security values are stored.
+   * Must match the prefix used in ServerlessSpaSecurityConstruct.
+   * @default '/myapp/security/'
+   */
+  readonly ssmPrefix?: string;
+
+  /**
+   * The region where ServerlessSpaSecurityConstruct is deployed.
+   * @default 'us-east-1'
+   */
+  readonly securityRegion?: string;
+}
 
 /**
  * Properties for ServerlessSpa.
@@ -39,6 +66,17 @@ export interface ServerlessSpaProps {
     FrontendConstructProps,
     'api' | 'customHeaderName' | 'customHeaderSecret'
   >;
+
+  /**
+   * Security configuration for WAF and custom header integration.
+   * If provided, enables cross-region security integration with
+   * ServerlessSpaSecurityConstruct deployed in us-east-1.
+   *
+   * When specified:
+   * - WAF WebACL ARN is retrieved from SSM and applied to CloudFront
+   * - Secret ARN is retrieved from SSM and passed to ApiConstruct for header validation
+   */
+  readonly security?: SecurityConfig;
 
   /**
    * Removal policy to apply to all resources.
@@ -117,24 +155,79 @@ export class ServerlessSpa extends Construct {
    */
   public readonly tableName: string;
 
+  /**
+   * The WAF WebACL ARN retrieved from SSM Parameter Store.
+   * Only available when security config is provided.
+   */
+  public webAclArn?: string;
+
+  /**
+   * The custom header name retrieved from SSM Parameter Store.
+   * Only available when security config is provided.
+   */
+  public securityCustomHeaderName?: string;
+
+  /**
+   * The secret ARN retrieved from SSM Parameter Store.
+   * Only available when security config is provided.
+   */
+  public secretArn?: string;
+
+  /**
+   * The AwsCustomResource for retrieving SSM parameters from us-east-1.
+   * Only available when security config is provided.
+   */
+  public ssmParameterReader?: AwsCustomResource;
+
   constructor(scope: Construct, id: string, props?: ServerlessSpaProps) {
     super(scope, id);
 
-    // Apply tags to all child resources (Requirement 8.1, 8.3)
+    // Apply tags to all child resources
     if (props?.tags) {
       Object.entries(props.tags).forEach(([key, value]) => {
         Tags.of(this).add(key, value);
       });
     }
 
-    // Determine removalPolicy (default: DESTROY) (Requirement 7.1, 7.2)
     const removalPolicy = props?.removalPolicy ?? RemovalPolicy.DESTROY;
-
-    // Determine autoDeleteObjects based on removalPolicy (Requirement 7.3, 7.4)
     const autoDeleteObjects = removalPolicy === RemovalPolicy.DESTROY;
 
-    // 3.1 Create DatabaseConstruct (Requirement 1.1, 3.1, 7.1, 7.2)
-    // Pass database props transparently and apply removalPolicy to tableProps
+    // Create AwsCustomResource for cross-region SSM parameter retrieval if security config is provided
+    if (props?.security) {
+      const ssmPrefix = props.security.ssmPrefix ?? '/myapp/security/';
+      const securityRegion = props.security.securityRegion ?? 'us-east-1';
+
+      // Create AwsCustomResource to get SSM parameters from us-east-1
+      const ssmCall = {
+        service: 'SSM',
+        action: 'getParameters',
+        parameters: {
+          Names: [
+            `${ssmPrefix}waf-acl-arn`,
+            `${ssmPrefix}custom-header-name`,
+            `${ssmPrefix}secret-arn`,
+          ],
+        },
+        region: securityRegion,
+        physicalResourceId: PhysicalResourceId.of(`${id}-ssm-params`),
+      };
+
+      this.ssmParameterReader = new AwsCustomResource(this, 'SsmParameterReader', {
+        onCreate: ssmCall,
+        onUpdate: ssmCall,
+        policy: AwsCustomResourcePolicy.fromSdkCalls({
+          resources: AwsCustomResourcePolicy.ANY_RESOURCE,
+        }),
+      });
+
+      // Extract values from the response
+      this.webAclArn = this.ssmParameterReader.getResponseField('Parameters.0.Value');
+      this.securityCustomHeaderName =
+        this.ssmParameterReader.getResponseField('Parameters.1.Value');
+      this.secretArn = this.ssmParameterReader.getResponseField('Parameters.2.Value');
+    }
+
+    // Create DatabaseConstruct
     this.database = new DatabaseConstruct(this, 'Database', {
       ...props?.database,
       tableProps: {
@@ -143,24 +236,22 @@ export class ServerlessSpa extends Construct {
       },
     });
 
-    // 3.2 Create AuthConstruct (Requirement 1.2, 3.2)
-    // Pass auth props transparently
+    // Create AuthConstruct
     this.auth = new AuthConstruct(this, 'Auth', {
       ...props?.auth,
     });
 
-    // 3.3 Create ApiConstruct (Requirement 1.3, 2.1, 2.2, 3.3)
-    // Auto-wire: table from DatabaseConstruct, userPool from AuthConstruct
-    // Pass api props transparently
+    // Create ApiConstruct with auto-wired dependencies
+    // Pass secretArn from security config if available
     this.api = new ApiConstruct(this, 'Api', {
       table: this.database.table,
       userPool: this.auth.userPool,
       ...props?.api,
+      ...(props?.security && { secretArn: this.secretArn }),
     });
 
-    // 3.4 Create FrontendConstruct (Requirement 1.4, 2.3, 2.4, 2.5, 3.4, 7.3, 7.4)
-    // Auto-wire: api, customHeaderName, customHeaderSecret from ApiConstruct
-    // Pass frontend props transparently and set autoDeleteObjects based on removalPolicy
+    // Create FrontendConstruct with auto-wired dependencies
+    // Pass webAclArn from security config if available
     this.frontend = new FrontendConstruct(this, 'Frontend', {
       api: this.api.api,
       customHeaderName: this.api.customHeaderName,
@@ -171,9 +262,10 @@ export class ServerlessSpa extends Construct {
         removalPolicy,
         autoDeleteObjects,
       },
+      ...(props?.security && { webAclArn: this.webAclArn }),
     });
 
-    // Set convenience properties (Requirement 5.1, 5.2, 5.3, 5.4, 5.5)
+    // Set convenience properties
     this.distributionDomainName = this.frontend.distributionDomainName;
     this.apiUrl = this.api.apiUrl;
     this.userPoolId = this.auth.userPoolId;
