@@ -198,29 +198,6 @@ describe('ServerlessSpa', () => {
         },
       });
     });
-
-    test('CloudFront sets custom header on API Gateway origin', () => {
-      ServerlessSpa.minimal(stack, 'App', {
-        lambdaEntry: TEST_LAMBDA_ENTRY,
-        partitionKey: TEST_PARTITION_KEY,
-      });
-
-      const template = Template.fromStack(stack);
-      template.hasResourceProperties('AWS::CloudFront::Distribution', {
-        DistributionConfig: {
-          Origins: Match.arrayWith([
-            Match.objectLike({
-              CustomOriginConfig: Match.anyValue(),
-              OriginCustomHeaders: Match.arrayWith([
-                Match.objectLike({
-                  HeaderName: 'x-origin-verify',
-                }),
-              ]),
-            }),
-          ]),
-        },
-      });
-    });
   });
 
   describe('Props Pass-through via advanced', () => {
@@ -1059,5 +1036,73 @@ describe('ServerlessSpa Factory Methods', () => {
       expect(spa.secretArn).toBeDefined();
       expect(spa.securityCustomHeaderName).toBeDefined();
     });
+
+    /**
+     * Validates: Requirements 6.3
+     */
+    test('retrieves edge-function-version-arn from SSM parameters', () => {
+      ServerlessSpa.withCustomDomainAndWaf(stack, 'App', {
+        lambdaEntry: TEST_LAMBDA_ENTRY,
+        partitionKey: TEST_PARTITION_KEY,
+        domainName: 'www.example.com',
+        hostedZoneId: 'Z1234567890ABC',
+        zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('Custom::AWS', {
+        Create: Match.stringLikeRegexp('/myapp/security/edge-function-version-arn'),
+      });
+    });
+
+    test('exposes edgeFunctionVersionArn property', () => {
+      const spa = ServerlessSpa.withCustomDomainAndWaf(stack, 'App', {
+        lambdaEntry: TEST_LAMBDA_ENTRY,
+        partitionKey: TEST_PARTITION_KEY,
+        domainName: 'www.example.com',
+        hostedZoneId: 'Z1234567890ABC',
+        zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
+      });
+
+      expect(spa.edgeFunctionVersionArn).toBeDefined();
+    });
+  });
+});
+
+describe('ServerlessSpa Lambda@Edge Integration', () => {
+  let app: App;
+  let stack: Stack;
+
+  beforeEach(() => {
+    app = new App();
+    stack = new Stack(app, 'TestStack');
+  });
+
+  /**
+   * Validates: Requirements 6.3
+   */
+  test('withWaf retrieves edge-function-version-arn from SSM', () => {
+    ServerlessSpa.withWaf(stack, 'App', {
+      lambdaEntry: TEST_LAMBDA_ENTRY,
+      partitionKey: TEST_PARTITION_KEY,
+      ssmPrefix: '/myapp/security/',
+    });
+
+    const template = Template.fromStack(stack);
+    template.hasResourceProperties('Custom::AWS', {
+      Create: Match.stringLikeRegexp('/myapp/security/edge-function-version-arn'),
+    });
+  });
+
+  test('withWaf exposes edgeFunctionVersionArn property', () => {
+    const spa = ServerlessSpa.withWaf(stack, 'App', {
+      lambdaEntry: TEST_LAMBDA_ENTRY,
+      partitionKey: TEST_PARTITION_KEY,
+      ssmPrefix: '/myapp/security/',
+    });
+
+    expect(spa.edgeFunctionVersionArn).toBeDefined();
   });
 });

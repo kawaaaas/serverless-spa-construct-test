@@ -151,7 +151,7 @@ describe('DatabaseConstruct', () => {
   });
 
   describe('Output properties', () => {
-    test('exposes table property as ITable', () => {
+    test('exposes table property as Table', () => {
       const construct = new DatabaseConstruct(stack, 'Database');
 
       expect(construct.table).toBeDefined();

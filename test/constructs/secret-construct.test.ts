@@ -173,4 +173,87 @@ describe('SecretConstruct', () => {
       expect(secretConstruct.rotationFunction).toBeDefined();
     });
   });
+
+  describe('Replica Regions', () => {
+    test('exposes replicaRegions property with default value', () => {
+      const secretConstruct = new SecretConstruct(stack, 'Secret');
+
+      expect(secretConstruct.replicaRegions).toEqual(['ap-northeast-1']);
+    });
+
+    test('exposes replicaRegions property with custom value', () => {
+      const secretConstruct = new SecretConstruct(stack, 'Secret', {
+        replicaRegions: ['eu-west-1', 'ap-southeast-1'],
+      });
+
+      expect(secretConstruct.replicaRegions).toEqual(['eu-west-1', 'ap-southeast-1']);
+    });
+
+    test('throws error when us-east-1 is specified as replica region', () => {
+      expect(() => {
+        new SecretConstruct(stack, 'Secret', {
+          replicaRegions: ['us-east-1'],
+        });
+      }).toThrow('us-east-1 cannot be specified as a replica region (it is the primary region)');
+    });
+
+    test('throws error when us-east-1 is included among other replica regions', () => {
+      expect(() => {
+        new SecretConstruct(stack, 'Secret', {
+          replicaRegions: ['ap-northeast-1', 'us-east-1', 'eu-west-1'],
+        });
+      }).toThrow('us-east-1 cannot be specified as a replica region (it is the primary region)');
+    });
+
+    test('allows empty replica regions array', () => {
+      const secretConstruct = new SecretConstruct(stack, 'Secret', {
+        replicaRegions: [],
+      });
+
+      expect(secretConstruct.replicaRegions).toEqual([]);
+    });
+
+    test('configures default replication in CloudFormation template', () => {
+      new SecretConstruct(stack, 'Secret');
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::SecretsManager::Secret', {
+        ReplicaRegions: [{ Region: 'ap-northeast-1' }],
+      });
+    });
+
+    test('configures custom replication regions in CloudFormation template', () => {
+      new SecretConstruct(stack, 'Secret', {
+        replicaRegions: ['eu-west-1', 'ap-southeast-1'],
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::SecretsManager::Secret', {
+        ReplicaRegions: [{ Region: 'eu-west-1' }, { Region: 'ap-southeast-1' }],
+      });
+    });
+
+    test('configures single replication region in CloudFormation template', () => {
+      new SecretConstruct(stack, 'Secret', {
+        replicaRegions: ['eu-central-1'],
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::SecretsManager::Secret', {
+        ReplicaRegions: [{ Region: 'eu-central-1' }],
+      });
+    });
+
+    test('does not configure replication when empty array is provided', () => {
+      new SecretConstruct(stack, 'Secret', {
+        replicaRegions: [],
+      });
+
+      const template = Template.fromStack(stack);
+      // When replicaRegions is empty, the ReplicaRegions property should not be present
+      template.hasResourceProperties('AWS::SecretsManager::Secret', {
+        ReplicaRegions: Match.absent(),
+      });
+    });
+  });
 });

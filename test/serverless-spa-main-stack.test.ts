@@ -33,16 +33,15 @@ describe('ServerlessSpaMainStack', () => {
     template.hasResource('AWS::CloudFront::Distribution', {});
   });
 
-  test('creates CfnOutputs', () => {
+  test('exposes construct properties', () => {
     const app = new cdk.App();
     const stack = new ServerlessSpaMainStack(app, 'TestStack');
-    const template = Template.fromStack(stack);
 
-    // Verify outputs are created
-    template.hasOutput('DistributionDomainName', {});
-    template.hasOutput('ApiUrl', {});
-    template.hasOutput('UserPoolId', {});
-    template.hasOutput('UserPoolClientId', {});
-    template.hasOutput('TableName', {});
+    // Verify construct properties are accessible
+    expect(stack.serverlessSpa).toBeDefined();
+    expect(stack.serverlessSpa.frontend).toBeDefined();
+    expect(stack.serverlessSpa.api).toBeDefined();
+    expect(stack.serverlessSpa.auth).toBeDefined();
+    expect(stack.serverlessSpa.database).toBeDefined();
   });
 });

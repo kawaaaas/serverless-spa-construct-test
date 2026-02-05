@@ -1,5 +1,5 @@
-import { Duration, RemovalPolicy } from 'aws-cdk-lib';
-import { IRestApi } from 'aws-cdk-lib/aws-apigateway';
+import { Duration, Fn, RemovalPolicy } from 'aws-cdk-lib';
+import { RestApi } from 'aws-cdk-lib/aws-apigateway';
 import {
   Certificate,
   CertificateValidation,
@@ -15,16 +15,17 @@ import {
   FunctionCode,
   FunctionEventType,
   IDistribution,
+  LambdaEdgeEventType,
   OriginRequestPolicy,
   PriceClass,
   ViewerProtocolPolicy,
 } from 'aws-cdk-lib/aws-cloudfront';
 import { HttpOrigin, S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
+import { IVersion } from 'aws-cdk-lib/aws-lambda';
 import { ARecord, HostedZone, IHostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { BlockPublicAccess, Bucket, BucketProps, IBucket } from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
-import * as crypto from 'crypto';
 
 /**
  * Properties for FrontendConstruct.
@@ -33,8 +34,9 @@ export interface FrontendConstructProps {
   /**
    * Optional API Gateway for /api/* routing.
    * If provided, requests to /api/* will be routed to this API Gateway.
+   * Note: Requires RestApi (not IRestApi) to access the .url property for CloudFront origin.
    */
-  readonly api?: IRestApi;
+  readonly api?: RestApi;
 
   /**
    * Optional WAF WebACL ARN to associate with the CloudFront distribution.
@@ -84,14 +86,6 @@ export interface FrontendConstructProps {
   readonly customHeaderName?: string;
 
   /**
-   * Custom header secret value for API Gateway access restriction.
-   * Only used when api is provided.
-   * If not provided, a random UUID will be generated.
-   * @default - A random UUID is generated
-   */
-  readonly customHeaderSecret?: string;
-
-  /**
    * Additional S3 bucket properties to override defaults.
    * These will be merged with the default configuration.
    */
@@ -102,6 +96,14 @@ export interface FrontendConstructProps {
    * These will be merged with the default configuration.
    */
   readonly distributionProps?: Partial<DistributionProps>;
+
+  /**
+   * Lambda@Edge function version for origin request.
+   * When provided, static custom header configuration is disabled
+   * and Lambda@Edge will dynamically add the custom header.
+   * Must be deployed in us-east-1 region.
+   */
+  readonly edgeFunctionVersion?: IVersion;
 }
 
 /**
@@ -151,12 +153,6 @@ export class FrontendConstruct extends Construct {
    */
   public readonly customHeaderName?: string;
 
-  /**
-   * The custom header secret value used for API Gateway access restriction.
-   * Only available when api is provided.
-   */
-  public readonly customHeaderSecret?: string;
-
   constructor(scope: Construct, id: string, props?: FrontendConstructProps) {
     super(scope, id);
 
@@ -197,10 +193,9 @@ export class FrontendConstruct extends Construct {
 
     this.certificate = certificate;
 
-    // Set custom header values only when api is provided
+    // Set custom header name only when api is provided
     if (props?.api) {
       this.customHeaderName = props.customHeaderName ?? 'x-origin-verify';
-      this.customHeaderSecret = props.customHeaderSecret ?? crypto.randomUUID();
     }
 
     // Create S3 bucket with secure defaults
@@ -261,17 +256,16 @@ function handler(event) {
     const additionalBehaviors: DistributionProps['additionalBehaviors'] = {};
 
     if (props?.api) {
-      // Construct the API Gateway domain from restApiId and region
-      // API Gateway URL format: https://{api-id}.execute-api.{region}.amazonaws.com/{stage}
-      const region = props.api.env.region || process.env.CDK_DEFAULT_REGION || 'us-east-1';
-      const apiDomain = `${props.api.restApiId}.execute-api.${region}.amazonaws.com`;
+      // Extract API Gateway domain from the .url property
+      // RestApi.url format: https://{api-id}.execute-api.{region}.amazonaws.com/{stage}/
+      // Use Fn.select and Fn.split to extract domain from token
+      const apiDomain = Fn.select(2, Fn.split('/', props.api.url));
 
-      // Create HTTP origin for API Gateway with custom header
-      const apiOrigin = new HttpOrigin(apiDomain, {
-        customHeaders: {
-          [this.customHeaderName!]: this.customHeaderSecret!,
-        },
-      });
+      // Create HTTP origin for API Gateway
+      const apiOrigin = new HttpOrigin(apiDomain);
+
+      // Determine whether to use Lambda@Edge
+      const useEdgeFunction = !!props.edgeFunctionVersion;
 
       // Add /api/* behavior for API Gateway routing
       additionalBehaviors['/api/*'] = {
@@ -280,6 +274,15 @@ function handler(event) {
         viewerProtocolPolicy: ViewerProtocolPolicy.HTTPS_ONLY,
         cachePolicy: CachePolicy.CACHING_DISABLED,
         originRequestPolicy: OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+        // Associate Lambda@Edge for origin request when edgeFunctionVersion is provided
+        ...(useEdgeFunction && {
+          edgeLambdas: [
+            {
+              functionVersion: props.edgeFunctionVersion!,
+              eventType: LambdaEdgeEventType.ORIGIN_REQUEST,
+            },
+          ],
+        }),
       };
     }
 

@@ -1,5 +1,6 @@
 import { RemovalPolicy, Tags } from 'aws-cdk-lib';
 import { Attribute } from 'aws-cdk-lib/aws-dynamodb';
+import { Version } from 'aws-cdk-lib/aws-lambda';
 import {
   AwsCustomResource,
   AwsCustomResourcePolicy,
@@ -44,10 +45,7 @@ export interface AdvancedOptions {
   /** Override ApiConstruct settings (table/userPool are auto-wired) */
   readonly api?: Omit<ApiConstructProps, 'table' | 'userPool' | 'entry'>;
   /** Override FrontendConstruct settings (api/headers are auto-wired) */
-  readonly frontend?: Omit<
-    FrontendConstructProps,
-    'api' | 'customHeaderName' | 'customHeaderSecret' | 'webAclArn'
-  >;
+  readonly frontend?: Omit<FrontendConstructProps, 'api' | 'customHeaderName' | 'webAclArn'>;
   /** Security/WAF configuration */
   readonly security?: SecurityConfig;
   /** Removal policy for all resources @default RemovalPolicy.DESTROY */
@@ -61,11 +59,11 @@ export interface AdvancedOptions {
 // ============================================================================
 
 /**
- * Props for ServerlessSpa.minimal() - Simplest setup with CloudFront default domain.
+ * Props for ServerlessSpaConstruct.minimal() - Simplest setup with CloudFront default domain.
  *
  * @example
  * ```typescript
- * ServerlessSpa.minimal(this, 'App', {
+ * ServerlessSpaConstruct.minimal(this, 'App', {
  *   lambdaEntry: './src/api/handler.ts',
  *   partitionKey: { name: 'PK', type: AttributeType.STRING },
  * });
@@ -95,11 +93,11 @@ export interface MinimalProps {
 }
 
 /**
- * Props for ServerlessSpa.withCustomDomain() - Custom domain with auto certificate.
+ * Props for ServerlessSpaConstruct.withCustomDomain() - Custom domain with auto certificate.
  *
  * @example
  * ```typescript
- * ServerlessSpa.withCustomDomain(this, 'App', {
+ * ServerlessSpaConstruct.withCustomDomain(this, 'App', {
  *   lambdaEntry: './src/api/handler.ts',
  *   partitionKey: { name: 'PK', type: AttributeType.STRING },
  *   domainName: 'www.example.com',
@@ -141,12 +139,12 @@ export interface WithCustomDomainProps {
 }
 
 /**
- * Props for ServerlessSpa.withWaf() - WAF protection (requires SecurityStack in us-east-1).
+ * Props for ServerlessSpaConstruct.withWaf() - WAF protection (requires SecurityStack in us-east-1).
  *
  * @example
  * ```typescript
  * // First deploy SecurityStack in us-east-1
- * ServerlessSpa.withWaf(this, 'App', {
+ * ServerlessSpaConstruct.withWaf(this, 'App', {
  *   lambdaEntry: './src/api/handler.ts',
  *   partitionKey: { name: 'PK', type: AttributeType.STRING },
  *   ssmPrefix: '/myapp/security/',
@@ -182,11 +180,11 @@ export interface WithWafProps {
 }
 
 /**
- * Props for ServerlessSpa.withCustomDomainAndWaf() - Full featured setup.
+ * Props for ServerlessSpaConstruct.withCustomDomainAndWaf() - Full featured setup.
  *
  * @example
  * ```typescript
- * ServerlessSpa.withCustomDomainAndWaf(this, 'App', {
+ * ServerlessSpaConstruct.withCustomDomainAndWaf(this, 'App', {
  *   lambdaEntry: './src/api/handler.ts',
  *   partitionKey: { name: 'PK', type: AttributeType.STRING },
  *   domainName: 'www.example.com',
@@ -240,10 +238,7 @@ export interface ServerlessSpaProps {
   readonly database?: DatabaseConstructProps;
   readonly auth?: AuthConstructProps;
   readonly api?: Omit<ApiConstructProps, 'table' | 'userPool'>;
-  readonly frontend?: Omit<
-    FrontendConstructProps,
-    'api' | 'customHeaderName' | 'customHeaderSecret' | 'webAclArn'
-  >;
+  readonly frontend?: Omit<FrontendConstructProps, 'api' | 'customHeaderName' | 'webAclArn'>;
   readonly security?: SecurityConfig;
   readonly removalPolicy?: RemovalPolicy;
   readonly tags?: { [key: string]: string };
@@ -258,12 +253,12 @@ export interface ServerlessSpaProps {
  *
  * ```typescript
  * // Simplest setup - CloudFront default domain
- * ServerlessSpa.minimal(this, 'App', {
+ * ServerlessSpaConstruct.minimal(this, 'App', {
  *   lambdaEntry: './src/api/handler.ts',
  * });
  *
  * // With custom domain (auto certificate creation)
- * ServerlessSpa.withCustomDomain(this, 'App', {
+ * ServerlessSpaConstruct.withCustomDomain(this, 'App', {
  *   lambdaEntry: './src/api/handler.ts',
  *   domainName: 'www.example.com',
  *   hostedZoneId: 'Z1234567890ABC',
@@ -271,13 +266,13 @@ export interface ServerlessSpaProps {
  * });
  *
  * // With WAF protection (requires SecurityStack in us-east-1)
- * ServerlessSpa.withWaf(this, 'App', {
+ * ServerlessSpaConstruct.withWaf(this, 'App', {
  *   lambdaEntry: './src/api/handler.ts',
  *   ssmPrefix: '/myapp/security/',
  * });
  *
  * // Full featured: custom domain + WAF
- * ServerlessSpa.withCustomDomainAndWaf(this, 'App', {
+ * ServerlessSpaConstruct.withCustomDomainAndWaf(this, 'App', {
  *   lambdaEntry: './src/api/handler.ts',
  *   domainName: 'www.example.com',
  *   hostedZoneId: 'Z1234567890ABC',
@@ -294,17 +289,17 @@ export interface ServerlessSpaProps {
  * - API Gateway + Lambda (backend API)
  * - S3 + CloudFront (static hosting)
  */
-export class ServerlessSpa extends Construct {
+export class ServerlessSpaConstruct extends Construct {
   // ============================================================================
   // Factory Methods - Recommended API
   // ============================================================================
 
   /**
-   * Creates a minimal ServerlessSpa with CloudFront default domain.
+   * Creates a minimal ServerlessSpaConstruct with CloudFront default domain.
    * Best for: Development, testing, or when custom domain is not needed.
    */
-  public static minimal(scope: Construct, id: string, props: MinimalProps): ServerlessSpa {
-    return new ServerlessSpa(scope, id, {
+  public static minimal(scope: Construct, id: string, props: MinimalProps): ServerlessSpaConstruct {
+    return new ServerlessSpaConstruct(scope, id, {
       ...props.advanced,
       database: {
         ...props.advanced?.database,
@@ -319,15 +314,15 @@ export class ServerlessSpa extends Construct {
   }
 
   /**
-   * Creates a ServerlessSpa with custom domain and auto-generated ACM certificate.
+   * Creates a ServerlessSpaConstruct with custom domain and auto-generated ACM certificate.
    * Best for: Production deployments with your own domain.
    */
   public static withCustomDomain(
     scope: Construct,
     id: string,
     props: WithCustomDomainProps
-  ): ServerlessSpa {
-    return new ServerlessSpa(scope, id, {
+  ): ServerlessSpaConstruct {
+    return new ServerlessSpaConstruct(scope, id, {
       ...props.advanced,
       database: {
         ...props.advanced?.database,
@@ -349,12 +344,12 @@ export class ServerlessSpa extends Construct {
   }
 
   /**
-   * Creates a ServerlessSpa with WAF protection.
+   * Creates a ServerlessSpaConstruct with WAF protection.
    * Requires: ServerlessSpaSecurityConstruct deployed in us-east-1 first.
    * Best for: Production deployments requiring WAF protection.
    */
-  public static withWaf(scope: Construct, id: string, props: WithWafProps): ServerlessSpa {
-    return new ServerlessSpa(scope, id, {
+  public static withWaf(scope: Construct, id: string, props: WithWafProps): ServerlessSpaConstruct {
+    return new ServerlessSpaConstruct(scope, id, {
       ...props.advanced,
       database: {
         ...props.advanced?.database,
@@ -373,7 +368,7 @@ export class ServerlessSpa extends Construct {
   }
 
   /**
-   * Creates a ServerlessSpa with custom domain AND WAF protection.
+   * Creates a ServerlessSpaConstruct with custom domain AND WAF protection.
    * Requires: ServerlessSpaSecurityConstruct deployed in us-east-1 first.
    * Best for: Production deployments with custom domain and WAF.
    */
@@ -381,8 +376,8 @@ export class ServerlessSpa extends Construct {
     scope: Construct,
     id: string,
     props: WithCustomDomainAndWafProps
-  ): ServerlessSpa {
-    return new ServerlessSpa(scope, id, {
+  ): ServerlessSpaConstruct {
+    return new ServerlessSpaConstruct(scope, id, {
       ...props.advanced,
       database: {
         ...props.advanced?.database,
@@ -479,6 +474,12 @@ export class ServerlessSpa extends Construct {
   public secretArn?: string;
 
   /**
+   * The Lambda@Edge function version ARN retrieved from SSM Parameter Store.
+   * Only available when security config is provided.
+   */
+  public edgeFunctionVersionArn?: string;
+
+  /**
    * The AwsCustomResource for retrieving SSM parameters from us-east-1.
    * Only available when security config is provided.
    */
@@ -486,11 +487,12 @@ export class ServerlessSpa extends Construct {
 
   /**
    * Protected constructor - use factory methods instead.
-   * @see ServerlessSpa.minimal
-   * @see ServerlessSpa.withCustomDomain
-   * @see ServerlessSpa.withWaf
-   * @see ServerlessSpa.withCustomDomainAndWaf
+   * @see ServerlessSpaConstruct.minimal
+   * @see ServerlessSpaConstruct.withCustomDomain
+   * @see ServerlessSpaConstruct.withWaf
+   * @see ServerlessSpaConstruct.withCustomDomainAndWaf
    */
+  // eslint-disable-next-line cdk/construct-props-struct-name
   protected constructor(scope: Construct, id: string, props?: ServerlessSpaProps) {
     super(scope, id);
 
@@ -518,6 +520,7 @@ export class ServerlessSpa extends Construct {
             `${ssmPrefix}waf-acl-arn`,
             `${ssmPrefix}custom-header-name`,
             `${ssmPrefix}secret-arn`,
+            `${ssmPrefix}edge-function-version-arn`,
           ],
         },
         region: securityRegion,
@@ -537,6 +540,7 @@ export class ServerlessSpa extends Construct {
       this.securityCustomHeaderName =
         this.ssmParameterReader.getResponseField('Parameters.1.Value');
       this.secretArn = this.ssmParameterReader.getResponseField('Parameters.2.Value');
+      this.edgeFunctionVersionArn = this.ssmParameterReader.getResponseField('Parameters.3.Value');
     }
 
     // Create DatabaseConstruct
@@ -554,20 +558,21 @@ export class ServerlessSpa extends Construct {
     });
 
     // Create ApiConstruct with auto-wired dependencies
-    // Pass secretArn from security config if available
+    // Pass secretArn and userPoolClientId from security config if available
     this.api = new ApiConstruct(this, 'Api', {
+      entry: '',
       table: this.database.table,
       userPool: this.auth.userPool,
+      userPoolClientId: this.auth.userPoolClientId,
       ...props?.api,
       ...(props?.security && { secretArn: this.secretArn }),
     });
 
     // Create FrontendConstruct with auto-wired dependencies
-    // Pass webAclArn from security config if available
+    // Pass webAclArn and edgeFunctionVersion from security config if available
     this.frontend = new FrontendConstruct(this, 'Frontend', {
       api: this.api.api,
       customHeaderName: this.api.customHeaderName,
-      customHeaderSecret: this.api.customHeaderSecret,
       ...props?.frontend,
       bucketProps: {
         ...props?.frontend?.bucketProps,
@@ -575,6 +580,14 @@ export class ServerlessSpa extends Construct {
         autoDeleteObjects,
       },
       ...(props?.security && { webAclArn: this.webAclArn }),
+      ...(props?.security &&
+        this.edgeFunctionVersionArn && {
+          edgeFunctionVersion: Version.fromVersionArn(
+            this,
+            'EdgeFunctionVersion',
+            this.edgeFunctionVersionArn
+          ),
+        }),
     });
 
     // Set convenience properties

@@ -4,7 +4,6 @@ import {
   AttributeType,
   BillingMode,
   GlobalSecondaryIndexProps,
-  ITable,
   Table,
   TableProps,
 } from 'aws-cdk-lib/aws-dynamodb';
@@ -59,8 +58,9 @@ export interface DatabaseConstructProps {
 export class DatabaseConstruct extends Construct {
   /**
    * The DynamoDB table created by this construct.
+   * Exposes Table (not ITable) to enable use of the grants property.
    */
-  public readonly table: ITable;
+  public readonly table: Table;
 
   /**
    * The name of the DynamoDB table.

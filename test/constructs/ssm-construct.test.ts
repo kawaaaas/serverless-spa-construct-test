@@ -12,6 +12,11 @@ describe('SsmConstruct', () => {
     secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret-abc123',
   };
 
+  const propsWithEdgeFunction = {
+    ...defaultProps,
+    edgeFunctionVersionArn: 'arn:aws:lambda:us-east-1:123456789012:function:edge-function:1',
+  };
+
   beforeEach(() => {
     app = new App();
     stack = new Stack(app, 'TestStack', {
@@ -20,11 +25,18 @@ describe('SsmConstruct', () => {
   });
 
   describe('SSM Parameter Creation', () => {
-    test('creates exactly 3 SSM Parameters', () => {
+    test('creates exactly 3 SSM Parameters without edge function', () => {
       new SsmConstruct(stack, 'Ssm', defaultProps);
 
       const template = Template.fromStack(stack);
       template.resourceCountIs('AWS::SSM::Parameter', 3);
+    });
+
+    test('creates exactly 4 SSM Parameters with edge function', () => {
+      new SsmConstruct(stack, 'Ssm', propsWithEdgeFunction);
+
+      const template = Template.fromStack(stack);
+      template.resourceCountIs('AWS::SSM::Parameter', 4);
     });
 
     test('creates waf-acl-arn parameter with correct value', () => {
@@ -59,6 +71,18 @@ describe('SsmConstruct', () => {
         Type: 'String',
       });
     });
+
+    test('creates edge-function-version-arn parameter with correct value', () => {
+      new SsmConstruct(stack, 'Ssm', propsWithEdgeFunction);
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::SSM::Parameter', {
+        Name: '/myapp/security/edge-function-version-arn',
+        Value: propsWithEdgeFunction.edgeFunctionVersionArn,
+        Type: 'String',
+        Description: 'Lambda@Edge function version ARN for CloudFront origin request',
+      });
+    });
   });
 
   describe('Custom SSM Prefix', () => {
@@ -77,6 +101,18 @@ describe('SsmConstruct', () => {
       });
       template.hasResourceProperties('AWS::SSM::Parameter', {
         Name: '/custom/prefix/secret-arn',
+      });
+    });
+
+    test('uses custom ssmPrefix for edge function version ARN', () => {
+      new SsmConstruct(stack, 'Ssm', {
+        ...propsWithEdgeFunction,
+        ssmPrefix: '/custom/prefix/',
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::SSM::Parameter', {
+        Name: '/custom/prefix/edge-function-version-arn',
       });
     });
 
@@ -107,6 +143,18 @@ describe('SsmConstruct', () => {
       const ssm = new SsmConstruct(stack, 'Ssm', defaultProps);
 
       expect(ssm.secretArnParameter).toBeDefined();
+    });
+
+    test('exposes edgeFunctionVersionArnParameter property when provided', () => {
+      const ssm = new SsmConstruct(stack, 'Ssm', propsWithEdgeFunction);
+
+      expect(ssm.edgeFunctionVersionArnParameter).toBeDefined();
+    });
+
+    test('edgeFunctionVersionArnParameter is undefined when not provided', () => {
+      const ssm = new SsmConstruct(stack, 'Ssm', defaultProps);
+
+      expect(ssm.edgeFunctionVersionArnParameter).toBeUndefined();
     });
 
     test('exposes ssmPrefix property with default value', () => {

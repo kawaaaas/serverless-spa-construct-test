@@ -1,6 +1,7 @@
 import { App, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { RestApi } from 'aws-cdk-lib/aws-apigateway';
+import { Code, Function as LambdaFunction, Runtime, Version } from 'aws-cdk-lib/aws-lambda';
 import { FrontendConstruct } from '../../lib/constructs/frontend-construct';
 
 describe('FrontendConstruct', () => {
@@ -181,32 +182,6 @@ describe('FrontendConstruct', () => {
       });
     });
 
-    test('sets custom header on API Gateway origin', () => {
-      const api = createValidRestApi();
-      new FrontendConstruct(stack, 'Frontend', {
-        api,
-        customHeaderName: 'x-test-header',
-        customHeaderSecret: 'test-secret',
-      });
-
-      const template = Template.fromStack(stack);
-      template.hasResourceProperties('AWS::CloudFront::Distribution', {
-        DistributionConfig: {
-          Origins: Match.arrayWith([
-            Match.objectLike({
-              CustomOriginConfig: Match.anyValue(),
-              OriginCustomHeaders: Match.arrayWith([
-                Match.objectLike({
-                  HeaderName: 'x-test-header',
-                  HeaderValue: 'test-secret',
-                }),
-              ]),
-            }),
-          ]),
-        },
-      });
-    });
-
     test('disables caching for API Gateway behavior', () => {
       const api = createValidRestApi();
       new FrontendConstruct(stack, 'Frontend', { api });
@@ -250,30 +225,10 @@ describe('FrontendConstruct', () => {
       expect(frontend.customHeaderName).toBe('x-custom-header');
     });
 
-    test('generates custom header secret when not provided', () => {
-      const api = createValidRestApi();
-      const frontend = new FrontendConstruct(stack, 'Frontend', { api });
-
-      expect(frontend.customHeaderSecret).toBeDefined();
-      expect(typeof frontend.customHeaderSecret).toBe('string');
-      expect(frontend.customHeaderSecret!.length).toBeGreaterThan(0);
-    });
-
-    test('uses custom header secret when provided', () => {
-      const api = createValidRestApi();
-      const frontend = new FrontendConstruct(stack, 'Frontend', {
-        api,
-        customHeaderSecret: 'my-secret-value',
-      });
-
-      expect(frontend.customHeaderSecret).toBe('my-secret-value');
-    });
-
     test('does not set custom header properties when api is not provided', () => {
       const frontend = new FrontendConstruct(stack, 'Frontend');
 
       expect(frontend.customHeaderName).toBeUndefined();
-      expect(frontend.customHeaderSecret).toBeUndefined();
     });
   });
 
@@ -365,14 +320,71 @@ describe('FrontendConstruct', () => {
       expect(frontend.customHeaderName).toBeDefined();
       expect(typeof frontend.customHeaderName).toBe('string');
     });
+  });
 
-    test('exposes customHeaderSecret when api is provided', () => {
+  describe('Lambda@Edge Integration', () => {
+    // Helper function to create a valid RestApi with at least one method
+    const createValidRestApi = () => {
       const api = new RestApi(stack, 'TestApi');
-      api.root.addMethod('GET'); // RestApi requires at least one method
-      const frontend = new FrontendConstruct(stack, 'Frontend', { api });
+      api.root.addMethod('GET');
+      return api;
+    };
 
-      expect(frontend.customHeaderSecret).toBeDefined();
-      expect(typeof frontend.customHeaderSecret).toBe('string');
+    // Helper function to create a Lambda function version for testing
+    const createEdgeFunctionVersion = () => {
+      const fn = new LambdaFunction(stack, 'EdgeFunction', {
+        runtime: Runtime.NODEJS_20_X,
+        handler: 'index.handler',
+        code: Code.fromInline('exports.handler = async () => {}'),
+      });
+      // Create a version from the function
+      return new Version(stack, 'EdgeFunctionVersion', {
+        lambda: fn,
+      });
+    };
+
+    test('associates Lambda@Edge with /api/* behavior when edgeFunctionVersion is provided', () => {
+      const api = createValidRestApi();
+      const edgeFunctionVersion = createEdgeFunctionVersion();
+
+      new FrontendConstruct(stack, 'Frontend', {
+        api,
+        edgeFunctionVersion,
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::CloudFront::Distribution', {
+        DistributionConfig: {
+          CacheBehaviors: Match.arrayWith([
+            Match.objectLike({
+              PathPattern: '/api/*',
+              LambdaFunctionAssociations: Match.arrayWith([
+                Match.objectLike({
+                  EventType: 'origin-request',
+                }),
+              ]),
+            }),
+          ]),
+        },
+      });
+    });
+
+    test('does not associate Lambda@Edge when edgeFunctionVersion is not provided', () => {
+      const api = createValidRestApi();
+
+      new FrontendConstruct(stack, 'Frontend', { api });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::CloudFront::Distribution', {
+        DistributionConfig: {
+          CacheBehaviors: Match.arrayWith([
+            Match.objectLike({
+              PathPattern: '/api/*',
+              LambdaFunctionAssociations: Match.absent(),
+            }),
+          ]),
+        },
+      });
     });
   });
 });

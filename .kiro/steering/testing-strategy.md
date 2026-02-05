@@ -24,15 +24,17 @@ test('snapshot test', () => {
 ```typescript
 test('creates S3 bucket with correct settings', () => {
   const template = Template.fromStack(stack);
-  
+
   template.hasResourceProperties('AWS::S3::Bucket', {
     BucketEncryption: {
-      ServerSideEncryptionConfiguration: [{
-        ServerSideEncryptionByDefault: {
-          SSEAlgorithm: 'AES256'
-        }
-      }]
-    }
+      ServerSideEncryptionConfiguration: [
+        {
+          ServerSideEncryptionByDefault: {
+            SSEAlgorithm: 'AES256',
+          },
+        },
+      ],
+    },
   });
 });
 ```
@@ -65,12 +67,20 @@ test/
 # Run all tests
 npm test
 
-# Run specific test
-npm test -- --testPathPattern=serverless-spa
+# Run specific test (use --testPathPatterns, not --testPathPattern)
+npm test -- --testPathPatterns=serverless-spa
+
+# Run multiple specific tests
+npm test -- --testPathPatterns="secret-construct|lambda-edge"
 
 # Update snapshots
 npm test -- -u
 ```
+
+## 注意事項
+
+- `--testPathPattern` は非推奨。必ず `--testPathPatterns` を使用すること
+- コマンド実行時は必ずプロジェクトルートで実行すること（cdコマンドは使わない）
 
 ## テスト方針
 

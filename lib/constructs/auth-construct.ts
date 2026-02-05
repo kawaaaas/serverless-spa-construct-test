@@ -71,10 +71,6 @@ export class AuthConstruct extends Construct {
       },
       passwordPolicy: {
         minLength: 8,
-        requireLowercase: true,
-        requireDigits: true,
-        requireUppercase: false,
-        requireSymbols: false,
       },
       ...props?.userPoolProps,
     });

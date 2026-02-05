@@ -22,6 +22,17 @@ const DEFAULT_ROTATION_DAYS = 7;
 const DEFAULT_SSM_PREFIX = '/myapp/security/';
 
 /**
+ * Default replica regions for secret replication.
+ */
+const DEFAULT_REPLICA_REGIONS = ['ap-northeast-1'];
+
+/**
+ * Primary region for secrets (us-east-1).
+ * This region cannot be specified as a replica region.
+ */
+const PRIMARY_REGION = 'us-east-1';
+
+/**
  * Properties for SecretConstruct.
  */
 export interface SecretConstructProps {
@@ -43,6 +54,13 @@ export interface SecretConstructProps {
    * @default '/myapp/security/'
    */
   readonly ssmPrefix?: string;
+
+  /**
+   * Regions to replicate the secret to.
+   * us-east-1 cannot be specified as it is the primary region.
+   * @default ['ap-northeast-1']
+   */
+  readonly replicaRegions?: string[];
 
   /**
    * Removal policy for resources.
@@ -85,6 +103,12 @@ export class SecretConstruct extends Construct {
   public readonly secretArn: string;
 
   /**
+   * The Secrets Manager secret name (without random suffix).
+   * This is the logical name used when creating the secret.
+   */
+  public readonly secretName: string;
+
+  /**
    * The custom header name.
    */
   public readonly customHeaderName: string;
@@ -93,6 +117,11 @@ export class SecretConstruct extends Construct {
    * The rotation Lambda function.
    */
   public readonly rotationFunction: IFunction;
+
+  /**
+   * The replica regions for secret replication.
+   */
+  public readonly replicaRegions: string[];
 
   /**
    * The SSM prefix used for parameters.
@@ -111,11 +140,22 @@ export class SecretConstruct extends Construct {
     this.customHeaderName = props?.customHeaderName ?? DEFAULT_CUSTOM_HEADER_NAME;
     this.rotationDays = props?.rotationDays ?? DEFAULT_ROTATION_DAYS;
     this.ssmPrefix = props?.ssmPrefix ?? DEFAULT_SSM_PREFIX;
+    this.replicaRegions = props?.replicaRegions ?? DEFAULT_REPLICA_REGIONS;
     const removalPolicy = props?.removalPolicy ?? RemovalPolicy.DESTROY;
+
+    // Validate replica regions - us-east-1 cannot be a replica region (it's the primary)
+    if (this.replicaRegions.includes(PRIMARY_REGION)) {
+      throw new Error(
+        `${PRIMARY_REGION} cannot be specified as a replica region (it is the primary region)`
+      );
+    }
+
+    // Compute the secret name (without random suffix added by AWS)
+    this.secretName = `${this.ssmPrefix}custom-header-secret`;
 
     // Create the secret with initial UUID value
     const secret = new Secret(this, 'Secret', {
-      secretName: `${this.ssmPrefix}custom-header-secret`,
+      secretName: this.secretName,
       description: `Custom header value for ${this.customHeaderName}`,
       generateSecretString: {
         secretStringTemplate: JSON.stringify({ headerName: this.customHeaderName }),
@@ -126,6 +166,12 @@ export class SecretConstruct extends Construct {
       },
       removalPolicy,
     });
+
+    // Configure replication to specified regions
+    // When secret is rotated, replicas are automatically synced by AWS Secrets Manager
+    for (const region of this.replicaRegions) {
+      secret.addReplicaRegion(region);
+    }
 
     this.secret = secret;
     this.secretArn = secret.secretArn;

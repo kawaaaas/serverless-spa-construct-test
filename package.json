@@ -22,16 +22,21 @@
     "@types/jest": "^30",
     "@types/node": "^24.10.1",
     "aws-cdk": "2.1103.0",
+    "aws-jwt-verify": "^5.1.1",
     "eslint": "^8.57.1",
     "eslint-plugin-cdk": "^1.8.0",
+    "fast-check": "^4.5.3",
     "jest": "^30",
     "prettier": "^3.8.1",
     "ts-jest": "^29",
     "ts-node": "^10.9.2",
+    "tslib": "^2.8.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.54.0"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.983.0",
+    "@aws-sdk/lib-dynamodb": "^3.983.0",
     "aws-cdk-lib": "^2.235.1",
     "constructs": "^10.0.0"
   }

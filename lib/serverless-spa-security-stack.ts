@@ -15,11 +15,10 @@ export class ServerlessSpaSecurityStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Create the security construct
-    this.security = new ServerlessSpaSecurityConstruct(this, 'Security', {
-      ssm: {
-        ssmPrefix: '/serverless-spa/security/',
-      },
+    // Create the security construct with WAF protection
+    this.security = ServerlessSpaSecurityConstruct.withWaf(this, 'Security', {
+      ssmPrefix: '/serverless-spa/security/',
+      rateLimit: 2000,
     });
   }
 }

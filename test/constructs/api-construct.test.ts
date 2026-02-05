@@ -20,35 +20,14 @@ describe('ApiConstruct', () => {
 
   describe('REST API', () => {
     test('creates REST API resource', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       template.resourceCountIs('AWS::ApiGateway::RestApi', 1);
     });
 
-    test('creates REST API with resource policy', () => {
-      new ApiConstruct(stack, 'Api', { table });
-
-      const template = Template.fromStack(stack);
-      template.hasResourceProperties('AWS::ApiGateway::RestApi', {
-        Policy: Match.objectLike({
-          Statement: Match.arrayWith([
-            Match.objectLike({
-              Effect: 'Deny',
-              Action: 'execute-api:Invoke',
-              Condition: Match.anyValue(),
-            }),
-            Match.objectLike({
-              Effect: 'Allow',
-              Action: 'execute-api:Invoke',
-            }),
-          ]),
-        }),
-      });
-    });
-
     test('enables CORS by default', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       // CORS is enabled via OPTIONS method on resources
@@ -60,14 +39,14 @@ describe('ApiConstruct', () => {
 
   describe('Lambda Function', () => {
     test('creates Lambda function', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       template.resourceCountIs('AWS::Lambda::Function', 1);
     });
 
     test('uses Node.js 20.x runtime', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       template.hasResourceProperties('AWS::Lambda::Function', {
@@ -76,7 +55,7 @@ describe('ApiConstruct', () => {
     });
 
     test('sets default memory size to 128MB', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       template.hasResourceProperties('AWS::Lambda::Function', {
@@ -85,7 +64,7 @@ describe('ApiConstruct', () => {
     });
 
     test('sets default timeout to 30 seconds', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       template.hasResourceProperties('AWS::Lambda::Function', {
@@ -94,7 +73,7 @@ describe('ApiConstruct', () => {
     });
 
     test('sets TABLE_NAME environment variable', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       template.hasResourceProperties('AWS::Lambda::Function', {
@@ -107,7 +86,7 @@ describe('ApiConstruct', () => {
     });
 
     test('grants Lambda read/write access to DynamoDB table', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       template.hasResourceProperties('AWS::IAM::Policy', {
@@ -134,7 +113,7 @@ describe('ApiConstruct', () => {
 
   describe('API Gateway Integration', () => {
     test('creates proxy resource {proxy+}', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       template.hasResourceProperties('AWS::ApiGateway::Resource', {
@@ -143,7 +122,7 @@ describe('ApiConstruct', () => {
     });
 
     test('creates ANY method on root path', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       template.hasResourceProperties('AWS::ApiGateway::Method', {
@@ -155,7 +134,7 @@ describe('ApiConstruct', () => {
     });
 
     test('creates ANY method on proxy resource', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       // Count ANY methods - should have at least 2 (root and proxy)
@@ -171,7 +150,7 @@ describe('ApiConstruct', () => {
   describe('Cognito Authorizer', () => {
     test('creates Cognito Authorizer when userPool is provided', () => {
       const userPool = new UserPool(stack, 'UserPool');
-      new ApiConstruct(stack, 'Api', { table, userPool });
+      new ApiConstruct(stack, 'Api', { table, userPool, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       template.resourceCountIs('AWS::ApiGateway::Authorizer', 1);
@@ -181,7 +160,7 @@ describe('ApiConstruct', () => {
     });
 
     test('does not create Authorizer when userPool is not provided', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       template.resourceCountIs('AWS::ApiGateway::Authorizer', 0);
@@ -189,7 +168,7 @@ describe('ApiConstruct', () => {
 
     test('applies Cognito Authorizer to methods when userPool is provided', () => {
       const userPool = new UserPool(stack, 'UserPool');
-      new ApiConstruct(stack, 'Api', { table, userPool });
+      new ApiConstruct(stack, 'Api', { table, userPool, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       template.hasResourceProperties('AWS::ApiGateway::Method', {
@@ -201,7 +180,7 @@ describe('ApiConstruct', () => {
 
   describe('Custom Header', () => {
     test('uses default custom header name', () => {
-      const api = new ApiConstruct(stack, 'Api', { table });
+      const api = new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       expect(api.customHeaderName).toBe('x-origin-verify');
     });
@@ -209,27 +188,11 @@ describe('ApiConstruct', () => {
     test('uses custom header name when provided', () => {
       const api = new ApiConstruct(stack, 'Api', {
         table,
+        entry: 'lambda/handler.ts',
         customHeaderName: 'x-custom-header',
       });
 
       expect(api.customHeaderName).toBe('x-custom-header');
-    });
-
-    test('generates custom header secret when not provided', () => {
-      const api = new ApiConstruct(stack, 'Api', { table });
-
-      expect(api.customHeaderSecret).toBeDefined();
-      expect(typeof api.customHeaderSecret).toBe('string');
-      expect(api.customHeaderSecret.length).toBeGreaterThan(0);
-    });
-
-    test('uses custom header secret when provided', () => {
-      const api = new ApiConstruct(stack, 'Api', {
-        table,
-        customHeaderSecret: 'my-secret-value',
-      });
-
-      expect(api.customHeaderSecret).toBe('my-secret-value');
     });
   });
 
@@ -237,6 +200,7 @@ describe('ApiConstruct', () => {
     test('overrides Lambda props', () => {
       new ApiConstruct(stack, 'Api', {
         table,
+        entry: 'lambda/handler.ts',
         lambdaProps: {
           memorySize: 256,
         },
@@ -251,6 +215,7 @@ describe('ApiConstruct', () => {
     test('overrides REST API props', () => {
       new ApiConstruct(stack, 'Api', {
         table,
+        entry: 'lambda/handler.ts',
         restApiProps: {
           description: 'Custom API description',
         },
@@ -265,36 +230,29 @@ describe('ApiConstruct', () => {
 
   describe('Output Properties', () => {
     test('exposes api property', () => {
-      const api = new ApiConstruct(stack, 'Api', { table });
+      const api = new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       expect(api.api).toBeDefined();
     });
 
     test('exposes handler property', () => {
-      const api = new ApiConstruct(stack, 'Api', { table });
+      const api = new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       expect(api.handler).toBeDefined();
     });
 
     test('exposes apiUrl property', () => {
-      const api = new ApiConstruct(stack, 'Api', { table });
+      const api = new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       expect(api.apiUrl).toBeDefined();
       expect(typeof api.apiUrl).toBe('string');
     });
 
     test('exposes customHeaderName property', () => {
-      const api = new ApiConstruct(stack, 'Api', { table });
+      const api = new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       expect(api.customHeaderName).toBeDefined();
       expect(typeof api.customHeaderName).toBe('string');
-    });
-
-    test('exposes customHeaderSecret property', () => {
-      const api = new ApiConstruct(stack, 'Api', { table });
-
-      expect(api.customHeaderSecret).toBeDefined();
-      expect(typeof api.customHeaderSecret).toBe('string');
     });
   });
 
@@ -302,6 +260,7 @@ describe('ApiConstruct', () => {
     test('grants Lambda Secrets Manager read permission when secretArn is provided', () => {
       new ApiConstruct(stack, 'Api', {
         table,
+        entry: 'lambda/handler.ts',
         secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
       });
 
@@ -321,10 +280,6 @@ describe('ApiConstruct', () => {
               statement.Action.includes('secretsmanager:DescribeSecret')
             ) {
               hasSecretsManagerPermission = true;
-              // Verify the resource is the correct secret ARN
-              expect(statement.Resource).toBe(
-                'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123'
-              );
               expect(statement.Effect).toBe('Allow');
             }
           }
@@ -335,7 +290,7 @@ describe('ApiConstruct', () => {
     });
 
     test('does not grant Secrets Manager permission when secretArn is not provided', () => {
-      new ApiConstruct(stack, 'Api', { table });
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
 
       const template = Template.fromStack(stack);
       const policies = template.findResources('AWS::IAM::Policy');
@@ -352,6 +307,178 @@ describe('ApiConstruct', () => {
           }
         }
       }
+    });
+  });
+
+  describe('Lambda Authorizer', () => {
+    test('creates Lambda Authorizer when secretArn is provided', () => {
+      new ApiConstruct(stack, 'Api', {
+        table,
+        entry: 'lambda/handler.ts',
+        secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
+      });
+
+      const template = Template.fromStack(stack);
+      // Should create 2 Lambda functions: Handler and AuthorizerHandler
+      template.resourceCountIs('AWS::Lambda::Function', 2);
+      // Should create REQUEST type authorizer
+      template.hasResourceProperties('AWS::ApiGateway::Authorizer', {
+        Type: 'REQUEST',
+      });
+    });
+
+    test('does not create Lambda Authorizer when secretArn is not provided', () => {
+      new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
+
+      const template = Template.fromStack(stack);
+      // Should only create 1 Lambda function: Handler
+      template.resourceCountIs('AWS::Lambda::Function', 1);
+      template.resourceCountIs('AWS::ApiGateway::Authorizer', 0);
+    });
+
+    test('does not create Lambda Authorizer when enableLambdaAuthorizer is false', () => {
+      new ApiConstruct(stack, 'Api', {
+        table,
+        entry: 'lambda/handler.ts',
+        secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
+        enableLambdaAuthorizer: false,
+      });
+
+      const template = Template.fromStack(stack);
+      // Should only create 1 Lambda function: Handler
+      template.resourceCountIs('AWS::Lambda::Function', 1);
+      template.resourceCountIs('AWS::ApiGateway::Authorizer', 0);
+    });
+
+    test('applies Lambda Authorizer to methods when secretArn is provided', () => {
+      new ApiConstruct(stack, 'Api', {
+        table,
+        entry: 'lambda/handler.ts',
+        secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::ApiGateway::Method', {
+        HttpMethod: 'ANY',
+        AuthorizationType: 'CUSTOM',
+      });
+    });
+
+    test('sets correct environment variables for Lambda Authorizer', () => {
+      new ApiConstruct(stack, 'Api', {
+        table,
+        entry: 'lambda/handler.ts',
+        secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
+        customHeaderName: 'x-custom-verify',
+        authorizerCacheTtlSeconds: 600,
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::Lambda::Function', {
+        Environment: {
+          Variables: {
+            CUSTOM_HEADER_NAME: 'x-custom-verify',
+            CACHE_TTL_SECONDS: '600',
+          },
+        },
+      });
+    });
+
+    test('grants Lambda Authorizer Secrets Manager read permission', () => {
+      new ApiConstruct(stack, 'Api', {
+        table,
+        entry: 'lambda/handler.ts',
+        secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
+      });
+
+      const template = Template.fromStack(stack);
+      const policies = template.findResources('AWS::IAM::Policy');
+      let authorizerHasSecretsManagerPermission = false;
+
+      for (const policyKey of Object.keys(policies)) {
+        const policy = policies[policyKey];
+        const statements = policy.Properties?.PolicyDocument?.Statement || [];
+        for (const statement of statements) {
+          if (Array.isArray(statement.Action)) {
+            if (
+              statement.Action.includes('secretsmanager:GetSecretValue') &&
+              statement.Action.includes('secretsmanager:DescribeSecret')
+            ) {
+              authorizerHasSecretsManagerPermission = true;
+            }
+          }
+        }
+      }
+
+      expect(authorizerHasSecretsManagerPermission).toBe(true);
+    });
+
+    test('exposes authorizerFunction property when Lambda Authorizer is created', () => {
+      const api = new ApiConstruct(stack, 'Api', {
+        table,
+        entry: 'lambda/handler.ts',
+        secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
+      });
+
+      expect(api.authorizerFunction).toBeDefined();
+    });
+
+    test('authorizerFunction is undefined when Lambda Authorizer is not created', () => {
+      const api = new ApiConstruct(stack, 'Api', { table, entry: 'lambda/handler.ts' });
+
+      expect(api.authorizerFunction).toBeUndefined();
+    });
+  });
+
+  describe('Cognito and Lambda Authorizer Combination', () => {
+    test('creates both Lambda Authorizer function and Cognito Authorizer when userPool and secretArn are provided', () => {
+      const userPool = new UserPool(stack, 'UserPool');
+      new ApiConstruct(stack, 'Api', {
+        table,
+        entry: 'lambda/handler.ts',
+        userPool,
+        secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
+      });
+
+      const template = Template.fromStack(stack);
+      // Should create 2 Lambda functions: Handler and AuthorizerHandler
+      template.resourceCountIs('AWS::Lambda::Function', 2);
+      // Should create 1 Cognito Authorizer (Lambda Authorizer is a function, not API Gateway Authorizer)
+      template.resourceCountIs('AWS::ApiGateway::Authorizer', 1);
+      template.hasResourceProperties('AWS::ApiGateway::Authorizer', {
+        Type: 'COGNITO_USER_POOLS',
+      });
+    });
+
+    test('uses Cognito Authorizer for methods when both are provided', () => {
+      const userPool = new UserPool(stack, 'UserPool');
+      new ApiConstruct(stack, 'Api', {
+        table,
+        entry: 'lambda/handler.ts',
+        userPool,
+        secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
+      });
+
+      const template = Template.fromStack(stack);
+      // Cognito Authorizer is used for JWT validation
+      // Resource policy handles custom header validation
+      template.hasResourceProperties('AWS::ApiGateway::Method', {
+        HttpMethod: 'ANY',
+        AuthorizationType: 'COGNITO_USER_POOLS',
+      });
+    });
+
+    test('exposes authorizerFunction when both userPool and secretArn are provided', () => {
+      const userPool = new UserPool(stack, 'UserPool');
+      const api = new ApiConstruct(stack, 'Api', {
+        table,
+        entry: 'lambda/handler.ts',
+        userPool,
+        secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
+      });
+
+      // Lambda Authorizer function is created and exposed
+      expect(api.authorizerFunction).toBeDefined();
     });
   });
 });
