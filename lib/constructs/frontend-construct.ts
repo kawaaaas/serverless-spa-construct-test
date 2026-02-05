@@ -1,4 +1,4 @@
-import { Duration, Fn, RemovalPolicy } from 'aws-cdk-lib';
+import { Duration, RemovalPolicy } from 'aws-cdk-lib';
 import { RestApi } from 'aws-cdk-lib/aws-apigateway';
 import {
   Certificate,
@@ -20,7 +20,7 @@ import {
   PriceClass,
   ViewerProtocolPolicy,
 } from 'aws-cdk-lib/aws-cloudfront';
-import { HttpOrigin, S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
+import { RestApiOrigin, S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
 import { IVersion } from 'aws-cdk-lib/aws-lambda';
 import { ARecord, HostedZone, IHostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
@@ -256,13 +256,9 @@ function handler(event) {
     const additionalBehaviors: DistributionProps['additionalBehaviors'] = {};
 
     if (props?.api) {
-      // Extract API Gateway domain from the .url property
-      // RestApi.url format: https://{api-id}.execute-api.{region}.amazonaws.com/{stage}/
-      // Use Fn.select and Fn.split to extract domain from token
-      const apiDomain = Fn.select(2, Fn.split('/', props.api.url));
-
-      // Create HTTP origin for API Gateway
-      const apiOrigin = new HttpOrigin(apiDomain);
+      // Create RestApiOrigin for API Gateway
+      // RestApiOrigin automatically handles domain extraction and stage path configuration
+      const apiOrigin = new RestApiOrigin(props.api);
 
       // Determine whether to use Lambda@Edge
       const useEdgeFunction = !!props.edgeFunctionVersion;

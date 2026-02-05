@@ -198,6 +198,23 @@ describe('FrontendConstruct', () => {
         },
       });
     });
+
+    test('uses ALL_VIEWER_EXCEPT_HOST_HEADER origin request policy for API Gateway', () => {
+      const api = createValidRestApi();
+      new FrontendConstruct(stack, 'Frontend', { api });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::CloudFront::Distribution', {
+        DistributionConfig: {
+          CacheBehaviors: Match.arrayWith([
+            Match.objectLike({
+              PathPattern: '/api/*',
+              OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac', // ALL_VIEWER_EXCEPT_HOST_HEADER policy ID
+            }),
+          ]),
+        },
+      });
+    });
   });
 
   describe('Custom Header', () => {
@@ -229,6 +246,17 @@ describe('FrontendConstruct', () => {
       const frontend = new FrontendConstruct(stack, 'Frontend');
 
       expect(frontend.customHeaderName).toBeUndefined();
+    });
+
+    test('exposes customHeaderName for Lambda@Edge to use', () => {
+      const api = createValidRestApi();
+      const frontend = new FrontendConstruct(stack, 'Frontend', {
+        api,
+        customHeaderName: 'x-my-custom-header',
+      });
+
+      // Lambda@Edge can access this property to add the custom header dynamically
+      expect(frontend.customHeaderName).toBe('x-my-custom-header');
     });
   });
 
