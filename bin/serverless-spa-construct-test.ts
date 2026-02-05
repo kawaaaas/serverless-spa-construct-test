@@ -23,3 +23,6 @@ const mainStack = new ServerlessSpaMainStack(app, 'ServerlessSpaMainStack', {
 
 // Main stack depends on security stack for SSM parameters
 mainStack.addDependency(securityStack);
+
+// Apply RemovalPolicy.DESTROY to all resources for development/testing
+cdk.RemovalPolicies.of(app).destroy();
