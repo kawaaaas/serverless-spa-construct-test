@@ -2,14 +2,11 @@
  * Public exports for the serverless-spa-construct package.
  */
 
-// Auth construct
-export { AuthConstruct, AuthConstructProps } from './constructs/auth-construct';
+// High-level construct
+export { ServerlessSpa, ServerlessSpaProps } from './constructs/serverless-spa';
 
-// Database construct
-export { DatabaseConstruct, DatabaseConstructProps } from './constructs/database-construct';
-
-// API construct
+// Low-level constructs
 export { ApiConstruct, ApiConstructProps } from './constructs/api-construct';
-
-// Frontend construct
+export { AuthConstruct, AuthConstructProps } from './constructs/auth-construct';
+export { DatabaseConstruct, DatabaseConstructProps } from './constructs/database-construct';
 export { FrontendConstruct, FrontendConstructProps } from './constructs/frontend-construct';
