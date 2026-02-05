@@ -1,0 +1,300 @@
+import { App, Stack } from 'aws-cdk-lib';
+import { Match, Template } from 'aws-cdk-lib/assertions';
+import { UserPool } from 'aws-cdk-lib/aws-cognito';
+import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb';
+import { ApiConstruct } from '../../lib/constructs/api-construct';
+
+describe('ApiConstruct', () => {
+  let app: App;
+  let stack: Stack;
+  let table: Table;
+
+  beforeEach(() => {
+    app = new App();
+    stack = new Stack(app, 'TestStack');
+    table = new Table(stack, 'TestTable', {
+      partitionKey: { name: 'PK', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+    });
+  });
+
+  describe('REST API', () => {
+    test('creates REST API resource', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      template.resourceCountIs('AWS::ApiGateway::RestApi', 1);
+    });
+
+    test('creates REST API with resource policy', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::ApiGateway::RestApi', {
+        Policy: Match.objectLike({
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Effect: 'Deny',
+              Action: 'execute-api:Invoke',
+              Condition: Match.anyValue(),
+            }),
+            Match.objectLike({
+              Effect: 'Allow',
+              Action: 'execute-api:Invoke',
+            }),
+          ]),
+        }),
+      });
+    });
+
+    test('enables CORS by default', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      // CORS is enabled via OPTIONS method on resources
+      template.hasResourceProperties('AWS::ApiGateway::Method', {
+        HttpMethod: 'OPTIONS',
+      });
+    });
+  });
+
+  describe('Lambda Function', () => {
+    test('creates Lambda function', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      template.resourceCountIs('AWS::Lambda::Function', 1);
+    });
+
+    test('uses Node.js 20.x runtime', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::Lambda::Function', {
+        Runtime: 'nodejs20.x',
+      });
+    });
+
+    test('sets default memory size to 128MB', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::Lambda::Function', {
+        MemorySize: 128,
+      });
+    });
+
+    test('sets default timeout to 30 seconds', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::Lambda::Function', {
+        Timeout: 30,
+      });
+    });
+
+    test('sets TABLE_NAME environment variable', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::Lambda::Function', {
+        Environment: {
+          Variables: {
+            TABLE_NAME: Match.anyValue(),
+          },
+        },
+      });
+    });
+
+    test('grants Lambda read/write access to DynamoDB table', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: Match.arrayWith([
+                'dynamodb:BatchGetItem',
+                'dynamodb:Query',
+                'dynamodb:GetItem',
+                'dynamodb:Scan',
+                'dynamodb:BatchWriteItem',
+                'dynamodb:PutItem',
+                'dynamodb:UpdateItem',
+                'dynamodb:DeleteItem',
+              ]),
+              Effect: 'Allow',
+            }),
+          ]),
+        },
+      });
+    });
+  });
+
+  describe('API Gateway Integration', () => {
+    test('creates proxy resource {proxy+}', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::ApiGateway::Resource', {
+        PathPart: '{proxy+}',
+      });
+    });
+
+    test('creates ANY method on root path', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::ApiGateway::Method', {
+        HttpMethod: 'ANY',
+        Integration: {
+          Type: 'AWS_PROXY',
+        },
+      });
+    });
+
+    test('creates ANY method on proxy resource', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      // Count ANY methods - should have at least 2 (root and proxy)
+      const methods = template.findResources('AWS::ApiGateway::Method', {
+        Properties: {
+          HttpMethod: 'ANY',
+        },
+      });
+      expect(Object.keys(methods).length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe('Cognito Authorizer', () => {
+    test('creates Cognito Authorizer when userPool is provided', () => {
+      const userPool = new UserPool(stack, 'UserPool');
+      new ApiConstruct(stack, 'Api', { table, userPool });
+
+      const template = Template.fromStack(stack);
+      template.resourceCountIs('AWS::ApiGateway::Authorizer', 1);
+      template.hasResourceProperties('AWS::ApiGateway::Authorizer', {
+        Type: 'COGNITO_USER_POOLS',
+      });
+    });
+
+    test('does not create Authorizer when userPool is not provided', () => {
+      new ApiConstruct(stack, 'Api', { table });
+
+      const template = Template.fromStack(stack);
+      template.resourceCountIs('AWS::ApiGateway::Authorizer', 0);
+    });
+
+    test('applies Cognito Authorizer to methods when userPool is provided', () => {
+      const userPool = new UserPool(stack, 'UserPool');
+      new ApiConstruct(stack, 'Api', { table, userPool });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::ApiGateway::Method', {
+        HttpMethod: 'ANY',
+        AuthorizationType: 'COGNITO_USER_POOLS',
+      });
+    });
+  });
+
+  describe('Custom Header', () => {
+    test('uses default custom header name', () => {
+      const api = new ApiConstruct(stack, 'Api', { table });
+
+      expect(api.customHeaderName).toBe('x-origin-verify');
+    });
+
+    test('uses custom header name when provided', () => {
+      const api = new ApiConstruct(stack, 'Api', {
+        table,
+        customHeaderName: 'x-custom-header',
+      });
+
+      expect(api.customHeaderName).toBe('x-custom-header');
+    });
+
+    test('generates custom header secret when not provided', () => {
+      const api = new ApiConstruct(stack, 'Api', { table });
+
+      expect(api.customHeaderSecret).toBeDefined();
+      expect(typeof api.customHeaderSecret).toBe('string');
+      expect(api.customHeaderSecret.length).toBeGreaterThan(0);
+    });
+
+    test('uses custom header secret when provided', () => {
+      const api = new ApiConstruct(stack, 'Api', {
+        table,
+        customHeaderSecret: 'my-secret-value',
+      });
+
+      expect(api.customHeaderSecret).toBe('my-secret-value');
+    });
+  });
+
+  describe('Props Override', () => {
+    test('overrides Lambda props', () => {
+      new ApiConstruct(stack, 'Api', {
+        table,
+        lambdaProps: {
+          memorySize: 256,
+        },
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::Lambda::Function', {
+        MemorySize: 256,
+      });
+    });
+
+    test('overrides REST API props', () => {
+      new ApiConstruct(stack, 'Api', {
+        table,
+        restApiProps: {
+          description: 'Custom API description',
+        },
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::ApiGateway::RestApi', {
+        Description: 'Custom API description',
+      });
+    });
+  });
+
+  describe('Output Properties', () => {
+    test('exposes api property', () => {
+      const api = new ApiConstruct(stack, 'Api', { table });
+
+      expect(api.api).toBeDefined();
+    });
+
+    test('exposes handler property', () => {
+      const api = new ApiConstruct(stack, 'Api', { table });
+
+      expect(api.handler).toBeDefined();
+    });
+
+    test('exposes apiUrl property', () => {
+      const api = new ApiConstruct(stack, 'Api', { table });
+
+      expect(api.apiUrl).toBeDefined();
+      expect(typeof api.apiUrl).toBe('string');
+    });
+
+    test('exposes customHeaderName property', () => {
+      const api = new ApiConstruct(stack, 'Api', { table });
+
+      expect(api.customHeaderName).toBeDefined();
+      expect(typeof api.customHeaderName).toBe('string');
+    });
+
+    test('exposes customHeaderSecret property', () => {
+      const api = new ApiConstruct(stack, 'Api', { table });
+
+      expect(api.customHeaderSecret).toBeDefined();
+      expect(typeof api.customHeaderSecret).toBe('string');
+    });
+  });
+});
