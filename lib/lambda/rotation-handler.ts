@@ -3,6 +3,7 @@ import {
   GetSecretValueCommand,
   PutSecretValueCommand,
   SecretsManagerClient,
+  UpdateSecretVersionStageCommand,
 } from '@aws-sdk/client-secrets-manager';
 import { PutParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { SecretsManagerRotationEvent, SecretsManagerRotationHandler } from 'aws-lambda';
@@ -132,16 +133,12 @@ async function finishSecret(
   }
 
   // Move AWSCURRENT to the new version
-  const stagingLabels = ['AWSCURRENT'];
-  if (currentVersion) {
-    // The SDK will automatically remove AWSCURRENT from the old version
-  }
-
   await secretsManager.send(
-    new PutSecretValueCommand({
+    new UpdateSecretVersionStageCommand({
       SecretId: secretId,
-      ClientRequestToken: clientRequestToken,
-      VersionStages: stagingLabels,
+      VersionStage: 'AWSCURRENT',
+      MoveToVersionId: clientRequestToken,
+      RemoveFromVersionId: currentVersion,
     })
   );
 
