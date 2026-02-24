@@ -15,10 +15,13 @@ export class ServerlessSpaSecurityStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Create the security construct with WAF protection
-    this.security = ServerlessSpaSecurityConstruct.withWaf(this, 'Security', {
+    // Create the security construct with WAF protection and ACM certificate
+    this.security = ServerlessSpaSecurityConstruct.withWafAndCertificate(this, 'Security', {
       ssmPrefix: '/serverless-spa/security/',
       rateLimit: 2000,
+      domainName: 'www.kawaaaas.com',
+      hostedZoneId: 'Z05304943LWOKTQXC7P8D',
+      zoneName: 'kawaaaas.com',
     });
   }
 }
