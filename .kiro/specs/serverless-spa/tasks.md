@@ -59,7 +59,7 @@ ServerlessSpaは、DatabaseConstruct、AuthConstruct、ApiConstruct、FrontendCo
   - 全てのテストが通ることを確認
   - 質問があればユーザーに確認
 
-- [x] 6. ユニットテストの実装
+- [x] 6. プロパティテストの実装
   - [x] 6.1 全コンストラクト作成テスト
     - DynamoDB、Cognito、API Gateway、Lambda、S3、CloudFrontが作成されることを確認
     - _要件: 1.1, 1.2, 1.3, 1.4, 1.5, 6.1_
