@@ -1,4 +1,3 @@
-import { Duration } from 'aws-cdk-lib';
 import { RestApi } from 'aws-cdk-lib/aws-apigateway';
 import {
   Certificate,
@@ -11,7 +10,6 @@ import {
   Function as CloudFrontFunction,
   Distribution,
   DistributionProps,
-  ErrorResponse,
   FunctionCode,
   FunctionEventType,
   IDistribution,
@@ -232,22 +230,13 @@ function handler(event) {
       ),
     });
 
-    // Error responses for SPA routing fallback
-    // Returns /index.html with 200 status for 403 and 404 errors
-    const errorResponses: ErrorResponse[] = [
-      {
-        httpStatus: 403,
-        responseHttpStatus: 200,
-        responsePagePath: '/index.html',
-        ttl: Duration.minutes(0),
-      },
-      {
-        httpStatus: 404,
-        responseHttpStatus: 200,
-        responsePagePath: '/index.html',
-        ttl: Duration.minutes(0),
-      },
-    ];
+    // NOTE: Custom error responses are NOT used because they apply to the entire
+    // CloudFront distribution (not per-behavior). This means API Gateway 403/404
+    // responses would also be intercepted and replaced with index.html, hiding
+    // real API errors from the client.
+    //
+    // SPA routing is handled by the CloudFront Function (viewer-request) which
+    // rewrites extension-less paths to /index.html before reaching S3.
 
     // Create CloudFront distribution with S3 origin using OAC
     // Build additional behaviors for API Gateway routing if api is provided
@@ -302,7 +291,6 @@ function handler(event) {
       additionalBehaviors,
       defaultRootObject: 'index.html',
       priceClass: PriceClass.PRICE_CLASS_100,
-      errorResponses,
       // Apply WAF WebACL if provided
       ...(props?.webAclArn && { webAclId: props.webAclArn }),
       // Apply custom domain configuration if provided

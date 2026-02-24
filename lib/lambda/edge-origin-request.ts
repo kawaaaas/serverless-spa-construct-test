@@ -33,10 +33,27 @@ const DEFAULT_CACHE_TTL_SECONDS = 300;
 let secretCache: SecretCache | null = null;
 
 /**
- * Secrets Manager client.
- * Lambda@Edge runs in us-east-1, so we use the default region.
+ * Gets the Secrets Manager region from build-time configuration.
+ * Defaults to 'us-east-1' where the secret is stored.
  */
-const secretsManager = new SecretsManagerClient({});
+function getSecretRegion(): string {
+  return process.env.SECRET_REGION || 'us-east-1';
+}
+
+/**
+ * Secrets Manager client.
+ * Lambda@Edge runs at edge locations worldwide, so we must explicitly
+ * specify us-east-1 where the secret is stored.
+ * Initialized lazily to ensure build-time define values are resolved.
+ */
+let _secretsManager: SecretsManagerClient | null = null;
+
+function getSecretsManagerClient(): SecretsManagerClient {
+  if (!_secretsManager) {
+    _secretsManager = new SecretsManagerClient({ region: getSecretRegion() });
+  }
+  return _secretsManager;
+}
 
 /**
  * Gets the secret name from environment variables.
@@ -94,7 +111,7 @@ export function createCacheEntry(
  * Uses secret name directly (not ARN).
  */
 async function fetchSecretValue(secretName: string): Promise<SecretValue> {
-  const response = await secretsManager.send(
+  const response = await getSecretsManagerClient().send(
     new GetSecretValueCommand({
       SecretId: secretName,
     })

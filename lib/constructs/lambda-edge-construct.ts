@@ -116,6 +116,7 @@ export class LambdaEdgeConstruct extends Construct {
         // Note: We use secret name instead of ARN to avoid CDK token issues
         define: {
           'process.env.SECRET_NAME': JSON.stringify(props.secretName),
+          'process.env.SECRET_REGION': JSON.stringify('us-east-1'),
           'process.env.CUSTOM_HEADER_NAME': JSON.stringify(customHeaderName),
           'process.env.CACHE_TTL_SECONDS': JSON.stringify(String(cacheTtlSeconds)),
         },
@@ -125,6 +126,10 @@ export class LambdaEdgeConstruct extends Construct {
         format: OutputFormat.CJS,
         // Target Node.js 20
         target: 'node20',
+        // Bundle AWS SDK into the function to ensure region configuration
+        // is preserved. By default, NodejsFunction externalizes @aws-sdk/*
+        // which causes esbuild minification to strip the region option.
+        externalModules: [],
       },
     });
 
