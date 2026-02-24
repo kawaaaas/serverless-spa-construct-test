@@ -70,8 +70,8 @@ describe('ServerlessSpa', () => {
       });
 
       const template = Template.fromStack(stack);
-      // 2 Lambda functions: API handler + S3 autoDeleteObjects custom resource
-      template.resourceCountIs('AWS::Lambda::Function', 2);
+      // 1 Lambda function: API handler
+      template.resourceCountIs('AWS::Lambda::Function', 1);
     });
 
     test('creates S3 bucket with default props', () => {
@@ -111,8 +111,8 @@ describe('ServerlessSpa', () => {
 
       // API Gateway + Lambda
       template.resourceCountIs('AWS::ApiGateway::RestApi', 1);
-      // 2 Lambda functions: API handler + S3 autoDeleteObjects custom resource
-      template.resourceCountIs('AWS::Lambda::Function', 2);
+      // 1 Lambda function: API handler
+      template.resourceCountIs('AWS::Lambda::Function', 1);
 
       // S3 + CloudFront
       template.resourceCountIs('AWS::S3::Bucket', 1);
@@ -385,7 +385,7 @@ describe('ServerlessSpa', () => {
     /**
      * Validates: Requirements 7.1, 7.2, 7.3, 7.4
      */
-    test('applies DESTROY by default to DynamoDB table', () => {
+    test('uses default removal policy (Retain) for DynamoDB table', () => {
       ServerlessSpa.minimal(stack, 'App', {
         lambdaEntry: TEST_LAMBDA_ENTRY,
         partitionKey: TEST_PARTITION_KEY,
@@ -393,11 +393,11 @@ describe('ServerlessSpa', () => {
 
       const template = Template.fromStack(stack);
       template.hasResource('AWS::DynamoDB::Table', {
-        DeletionPolicy: 'Delete',
+        DeletionPolicy: 'Retain',
       });
     });
 
-    test('applies DESTROY by default to S3 bucket', () => {
+    test('uses default removal policy (Retain) for S3 bucket', () => {
       ServerlessSpa.minimal(stack, 'App', {
         lambdaEntry: TEST_LAMBDA_ENTRY,
         partitionKey: TEST_PARTITION_KEY,
@@ -405,19 +405,18 @@ describe('ServerlessSpa', () => {
 
       const template = Template.fromStack(stack);
       template.hasResource('AWS::S3::Bucket', {
-        DeletionPolicy: 'Delete',
+        DeletionPolicy: 'Retain',
       });
     });
 
-    test('enables autoDeleteObjects by default', () => {
+    test('does not enable autoDeleteObjects by default', () => {
       ServerlessSpa.minimal(stack, 'App', {
         lambdaEntry: TEST_LAMBDA_ENTRY,
         partitionKey: TEST_PARTITION_KEY,
       });
 
       const template = Template.fromStack(stack);
-      // autoDeleteObjects creates a custom resource for bucket cleanup
-      template.resourceCountIs('Custom::S3AutoDeleteObjects', 1);
+      template.resourceCountIs('Custom::S3AutoDeleteObjects', 0);
     });
 
     test('applies custom RemovalPolicy.RETAIN to DynamoDB table', () => {

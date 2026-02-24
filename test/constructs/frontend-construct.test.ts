@@ -1,4 +1,4 @@
-import { App, Stack } from 'aws-cdk-lib';
+import { App, RemovalPolicy, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { RestApi } from 'aws-cdk-lib/aws-apigateway';
 import { Certificate } from 'aws-cdk-lib/aws-certificatemanager';
@@ -36,21 +36,36 @@ describe('FrontendConstruct', () => {
       });
     });
 
-    test('sets RemovalPolicy.DESTROY', () => {
+    test('uses default removal policy (Retain)', () => {
       new FrontendConstruct(stack, 'Frontend');
+
+      const template = Template.fromStack(stack);
+      template.hasResource('AWS::S3::Bucket', {
+        DeletionPolicy: 'Retain',
+        UpdateReplacePolicy: 'Retain',
+      });
+    });
+
+    test('does not enable autoDeleteObjects by default', () => {
+      new FrontendConstruct(stack, 'Frontend');
+
+      const template = Template.fromStack(stack);
+      template.resourceCountIs('Custom::S3AutoDeleteObjects', 0);
+    });
+
+    test('applies RemovalPolicy.DESTROY via bucketProps', () => {
+      new FrontendConstruct(stack, 'Frontend', {
+        bucketProps: {
+          removalPolicy: RemovalPolicy.DESTROY,
+          autoDeleteObjects: true,
+        },
+      });
 
       const template = Template.fromStack(stack);
       template.hasResource('AWS::S3::Bucket', {
         DeletionPolicy: 'Delete',
         UpdateReplacePolicy: 'Delete',
       });
-    });
-
-    test('enables autoDeleteObjects', () => {
-      new FrontendConstruct(stack, 'Frontend');
-
-      const template = Template.fromStack(stack);
-      // autoDeleteObjects creates a custom resource for bucket cleanup
       template.resourceCountIs('Custom::S3AutoDeleteObjects', 1);
     });
   });
@@ -88,24 +103,13 @@ describe('FrontendConstruct', () => {
       });
     });
 
-    test('sets error responses for 403 and 404', () => {
+    test('does not set custom error responses (SPA routing handled by CloudFront Function)', () => {
       new FrontendConstruct(stack, 'Frontend');
 
       const template = Template.fromStack(stack);
       template.hasResourceProperties('AWS::CloudFront::Distribution', {
         DistributionConfig: {
-          CustomErrorResponses: Match.arrayWith([
-            Match.objectLike({
-              ErrorCode: 403,
-              ResponseCode: 200,
-              ResponsePagePath: '/index.html',
-            }),
-            Match.objectLike({
-              ErrorCode: 404,
-              ResponseCode: 200,
-              ResponsePagePath: '/index.html',
-            }),
-          ]),
+          CustomErrorResponses: Match.absent(),
         },
       });
     });

@@ -42,13 +42,13 @@ describe('DatabaseConstruct', () => {
       });
     });
 
-    test('creates table with DESTROY removal policy', () => {
+    test('creates table with default removal policy (Retain)', () => {
       new DatabaseConstruct(stack, 'Database');
 
       const template = Template.fromStack(stack);
       template.hasResource('AWS::DynamoDB::Table', {
-        DeletionPolicy: 'Delete',
-        UpdateReplacePolicy: 'Delete',
+        DeletionPolicy: 'Retain',
+        UpdateReplacePolicy: 'Retain',
       });
     });
   });
