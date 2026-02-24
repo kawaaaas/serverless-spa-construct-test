@@ -28,6 +28,6 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ['node_modules/**', 'cdk.out/**', '*.js', '*.d.ts'],
+    ignores: ['node_modules/**', 'cdk.out/**', '*.js', '**/*.d.ts'],
   }
 );
