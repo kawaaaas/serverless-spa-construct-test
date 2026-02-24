@@ -1,4 +1,5 @@
 import { RemovalPolicy, Stack, Tags } from 'aws-cdk-lib';
+import { Certificate, ICertificate } from 'aws-cdk-lib/aws-certificatemanager';
 import { Attribute } from 'aws-cdk-lib/aws-dynamodb';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Version } from 'aws-cdk-lib/aws-lambda';
@@ -32,6 +33,13 @@ export interface SecurityConfig {
    * @default 'us-east-1'
    */
   readonly securityRegion?: string;
+
+  /**
+   * When true, only retrieve certificate-arn from SSM (skip WAF/secret/edge parameters).
+   * Used internally by withCustomDomain() which doesn't need WAF resources.
+   * @internal
+   */
+  readonly certificateOnly?: boolean;
 }
 
 /**
@@ -94,7 +102,7 @@ export interface MinimalProps {
 }
 
 /**
- * Props for ServerlessSpaConstruct.withCustomDomain() - Custom domain with auto certificate.
+ * Props for ServerlessSpaConstruct.withCustomDomain() - Custom domain with certificate from SecurityStack.
  *
  * @example
  * ```typescript
@@ -104,6 +112,7 @@ export interface MinimalProps {
  *   domainName: 'www.example.com',
  *   hostedZoneId: 'Z1234567890ABC',
  *   zoneName: 'example.com',
+ *   ssmPrefix: '/myapp/security/',
  * });
  * ```
  */
@@ -124,6 +133,8 @@ export interface WithCustomDomainProps {
   readonly hostedZoneId: string;
   /** Route53 Zone Name (e.g., 'example.com') */
   readonly zoneName: string;
+  /** SSM prefix matching your ServerlessSpaSecurityConstruct */
+  readonly ssmPrefix: string;
 
   // === OPTIONAL ===
   /**
@@ -135,6 +146,8 @@ export interface WithCustomDomainProps {
 
   /** Additional domain aliases (e.g., ['example.com']) */
   readonly alternativeDomainNames?: string[];
+  /** Region where SecurityStack is deployed @default 'us-east-1' */
+  readonly securityRegion?: string;
   /** Advanced customization options */
   readonly advanced?: AdvancedOptions;
 }
@@ -258,12 +271,13 @@ export interface ServerlessSpaProps {
  *   lambdaEntry: './src/api/handler.ts',
  * });
  *
- * // With custom domain (auto certificate creation)
+ * // With custom domain (certificate from SecurityStack)
  * ServerlessSpaConstruct.withCustomDomain(this, 'App', {
  *   lambdaEntry: './src/api/handler.ts',
  *   domainName: 'www.example.com',
  *   hostedZoneId: 'Z1234567890ABC',
  *   zoneName: 'example.com',
+ *   ssmPrefix: '/myapp/security/',
  * });
  *
  * // With WAF protection (requires SecurityStack in us-east-1)
@@ -315,7 +329,8 @@ export class ServerlessSpaConstruct extends Construct {
   }
 
   /**
-   * Creates a ServerlessSpaConstruct with custom domain and auto-generated ACM certificate.
+   * Creates a ServerlessSpaConstruct with custom domain and certificate from SecurityStack.
+   * Requires: ServerlessSpaSecurityConstruct with certificate deployed in us-east-1 first.
    * Best for: Production deployments with your own domain.
    */
   public static withCustomDomain(
@@ -340,6 +355,11 @@ export class ServerlessSpaConstruct extends Construct {
         hostedZoneId: props.hostedZoneId,
         zoneName: props.zoneName,
         alternativeDomainNames: props.alternativeDomainNames,
+      },
+      security: {
+        ssmPrefix: props.ssmPrefix,
+        securityRegion: props.securityRegion,
+        certificateOnly: true,
       },
     });
   }
@@ -481,6 +501,18 @@ export class ServerlessSpaConstruct extends Construct {
   public edgeFunctionVersionArn?: string;
 
   /**
+   * The certificate ARN retrieved from SSM Parameter Store.
+   * Only available when security config with certificate is provided.
+   */
+  public certificateArn?: string;
+
+  /**
+   * The ICertificate resolved from SSM Parameter Store certificate ARN.
+   * Only available when security config with certificate is provided.
+   */
+  public certificate?: ICertificate;
+
+  /**
    * The AwsCustomResource for retrieving SSM parameters from us-east-1.
    * Only available when security config is provided.
    */
@@ -546,22 +578,36 @@ export class ServerlessSpaConstruct extends Construct {
         });
       };
 
-      const wafAclReader = createSsmReader('SsmWafAclArn', 'waf-acl-arn');
-      const headerNameReader = createSsmReader('SsmCustomHeaderName', 'custom-header-name');
-      const secretArnReader = createSsmReader('SsmSecretArn', 'secret-arn');
-      const edgeFnReader = createSsmReader(
-        'SsmEdgeFunctionVersionArn',
-        'edge-function-version-arn'
-      );
+      // Create WAF/secret/edge SSM readers only when not in certificateOnly mode
+      if (!props.security.certificateOnly) {
+        const wafAclReader = createSsmReader('SsmWafAclArn', 'waf-acl-arn');
+        const headerNameReader = createSsmReader('SsmCustomHeaderName', 'custom-header-name');
+        const secretArnReader = createSsmReader('SsmSecretArn', 'secret-arn');
+        const edgeFnReader = createSsmReader(
+          'SsmEdgeFunctionVersionArn',
+          'edge-function-version-arn'
+        );
 
-      // Keep reference to one reader for backward compatibility
-      this.ssmParameterReader = wafAclReader;
+        // Keep reference to one reader for backward compatibility
+        this.ssmParameterReader = wafAclReader;
 
-      // Extract values from individual responses
-      this.webAclArn = wafAclReader.getResponseField('Parameter.Value');
-      this.securityCustomHeaderName = headerNameReader.getResponseField('Parameter.Value');
-      this.secretArn = secretArnReader.getResponseField('Parameter.Value');
-      this.edgeFunctionVersionArn = edgeFnReader.getResponseField('Parameter.Value');
+        // Extract values from individual responses
+        this.webAclArn = wafAclReader.getResponseField('Parameter.Value');
+        this.securityCustomHeaderName = headerNameReader.getResponseField('Parameter.Value');
+        this.secretArn = secretArnReader.getResponseField('Parameter.Value');
+        this.edgeFunctionVersionArn = edgeFnReader.getResponseField('Parameter.Value');
+      }
+
+      // Read certificate ARN from SSM when frontend has a custom domain
+      if (props?.frontend?.domainName) {
+        const certArnReader = createSsmReader('SsmCertificateArn', 'certificate-arn');
+        this.certificateArn = certArnReader.getResponseField('Parameter.Value');
+        this.certificate = Certificate.fromCertificateArn(
+          this,
+          'SsmCertificate',
+          this.certificateArn
+        );
+      }
     }
 
     // Create DatabaseConstruct
@@ -591,6 +637,7 @@ export class ServerlessSpaConstruct extends Construct {
 
     // Create FrontendConstruct with auto-wired dependencies
     // Pass webAclArn and edgeFunctionVersion from security config if available
+    // Pass certificate from SSM when available (cross-region certificate injection)
     this.frontend = new FrontendConstruct(this, 'Frontend', {
       api: this.api.api,
       customHeaderName: this.api.customHeaderName,
@@ -611,6 +658,7 @@ export class ServerlessSpaConstruct extends Construct {
             this.edgeFunctionVersionArn
           ),
         }),
+      ...(this.certificate && { certificate: this.certificate }),
     });
 
     // Set convenience properties

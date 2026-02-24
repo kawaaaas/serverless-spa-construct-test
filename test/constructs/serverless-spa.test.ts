@@ -678,6 +678,7 @@ describe('ServerlessSpa Factory Methods', () => {
         domainName: 'www.example.com',
         hostedZoneId: 'Z1234567890ABC',
         zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
       });
 
       const template = Template.fromStack(stack);
@@ -688,20 +689,49 @@ describe('ServerlessSpa Factory Methods', () => {
       });
     });
 
-    test('creates ACM certificate', () => {
+    test('retrieves certificate-arn from SSM parameters', () => {
       ServerlessSpa.withCustomDomain(stack, 'App', {
         lambdaEntry: TEST_LAMBDA_ENTRY,
         partitionKey: TEST_PARTITION_KEY,
         domainName: 'www.example.com',
         hostedZoneId: 'Z1234567890ABC',
         zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
       });
 
       const template = Template.fromStack(stack);
-      template.resourceCountIs('AWS::CertificateManager::Certificate', 1);
-      template.hasResourceProperties('AWS::CertificateManager::Certificate', {
-        DomainName: 'www.example.com',
+      template.hasResourceProperties('Custom::AWS', {
+        Create: Match.stringLikeRegexp('/myapp/security/certificate-arn'),
       });
+    });
+
+    test('creates only certificate SSM reader (no WAF/secret/edge readers)', () => {
+      ServerlessSpa.withCustomDomain(stack, 'App', {
+        lambdaEntry: TEST_LAMBDA_ENTRY,
+        partitionKey: TEST_PARTITION_KEY,
+        domainName: 'www.example.com',
+        hostedZoneId: 'Z1234567890ABC',
+        zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
+      });
+
+      const template = Template.fromStack(stack);
+      // Only 1 SSM reader for certificate-arn (no WAF/secret/edge readers)
+      template.resourceCountIs('Custom::AWS', 1);
+    });
+
+    test('does not create ACM certificate in main stack', () => {
+      ServerlessSpa.withCustomDomain(stack, 'App', {
+        lambdaEntry: TEST_LAMBDA_ENTRY,
+        partitionKey: TEST_PARTITION_KEY,
+        domainName: 'www.example.com',
+        hostedZoneId: 'Z1234567890ABC',
+        zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
+      });
+
+      const template = Template.fromStack(stack);
+      template.resourceCountIs('AWS::CertificateManager::Certificate', 0);
     });
 
     test('creates Route53 A record', () => {
@@ -711,6 +741,7 @@ describe('ServerlessSpa Factory Methods', () => {
         domainName: 'www.example.com',
         hostedZoneId: 'Z1234567890ABC',
         zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
       });
 
       const template = Template.fromStack(stack);
@@ -728,6 +759,7 @@ describe('ServerlessSpa Factory Methods', () => {
         domainName: 'www.example.com',
         hostedZoneId: 'Z1234567890ABC',
         zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
         alternativeDomainNames: ['example.com'],
       });
 
@@ -739,17 +771,51 @@ describe('ServerlessSpa Factory Methods', () => {
       });
     });
 
-    test('does not create AwsCustomResource (no security)', () => {
+    test('uses us-east-1 region by default for SSM', () => {
       ServerlessSpa.withCustomDomain(stack, 'App', {
         lambdaEntry: TEST_LAMBDA_ENTRY,
         partitionKey: TEST_PARTITION_KEY,
         domainName: 'www.example.com',
         hostedZoneId: 'Z1234567890ABC',
         zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
       });
 
       const template = Template.fromStack(stack);
-      template.resourceCountIs('Custom::AWS', 0);
+      template.hasResourceProperties('Custom::AWS', {
+        Create: Match.stringLikeRegexp('"region":"us-east-1"'),
+      });
+    });
+
+    test('uses custom securityRegion when specified', () => {
+      ServerlessSpa.withCustomDomain(stack, 'App', {
+        lambdaEntry: TEST_LAMBDA_ENTRY,
+        partitionKey: TEST_PARTITION_KEY,
+        domainName: 'www.example.com',
+        hostedZoneId: 'Z1234567890ABC',
+        zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
+        securityRegion: 'eu-west-1',
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('Custom::AWS', {
+        Create: Match.stringLikeRegexp('"region":"eu-west-1"'),
+      });
+    });
+
+    test('exposes certificate properties', () => {
+      const spa = ServerlessSpa.withCustomDomain(stack, 'App', {
+        lambdaEntry: TEST_LAMBDA_ENTRY,
+        partitionKey: TEST_PARTITION_KEY,
+        domainName: 'www.example.com',
+        hostedZoneId: 'Z1234567890ABC',
+        zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
+      });
+
+      expect(spa.certificateArn).toBeDefined();
+      expect(spa.certificate).toBeDefined();
     });
 
     test('passes advanced options to constructs', () => {
@@ -759,6 +825,7 @@ describe('ServerlessSpa Factory Methods', () => {
         domainName: 'www.example.com',
         hostedZoneId: 'Z1234567890ABC',
         zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
         advanced: {
           removalPolicy: RemovalPolicy.RETAIN,
         },
@@ -913,14 +980,30 @@ describe('ServerlessSpa Factory Methods', () => {
         },
       });
 
-      // ACM certificate
-      template.resourceCountIs('AWS::CertificateManager::Certificate', 1);
+      // No ACM certificate in main stack (comes from SSM)
+      template.resourceCountIs('AWS::CertificateManager::Certificate', 0);
 
-      // SSM parameter retrieval (4 individual readers)
-      template.resourceCountIs('Custom::AWS', 4);
+      // SSM parameter retrieval (4 WAF/secret/edge readers + 1 certificate-arn reader)
+      template.resourceCountIs('Custom::AWS', 5);
     });
 
-    test('creates Route53 record and ACM certificate', () => {
+    test('retrieves certificate-arn from SSM parameters', () => {
+      ServerlessSpa.withCustomDomainAndWaf(stack, 'App', {
+        lambdaEntry: TEST_LAMBDA_ENTRY,
+        partitionKey: TEST_PARTITION_KEY,
+        domainName: 'www.example.com',
+        hostedZoneId: 'Z1234567890ABC',
+        zoneName: 'example.com',
+        ssmPrefix: '/myapp/security/',
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('Custom::AWS', {
+        Create: Match.stringLikeRegexp('/myapp/security/certificate-arn'),
+      });
+    });
+
+    test('creates Route53 record', () => {
       ServerlessSpa.withCustomDomainAndWaf(stack, 'App', {
         lambdaEntry: TEST_LAMBDA_ENTRY,
         partitionKey: TEST_PARTITION_KEY,
@@ -932,9 +1015,6 @@ describe('ServerlessSpa Factory Methods', () => {
 
       const template = Template.fromStack(stack);
       template.resourceCountIs('AWS::Route53::RecordSet', 1);
-      template.hasResourceProperties('AWS::CertificateManager::Certificate', {
-        DomainName: 'www.example.com',
-      });
     });
 
     test('supports alternative domain names', () => {
@@ -1021,7 +1101,7 @@ describe('ServerlessSpa Factory Methods', () => {
       });
     });
 
-    test('returns ServerlessSpa instance with security properties', () => {
+    test('returns ServerlessSpa instance with security and certificate properties', () => {
       const spa = ServerlessSpa.withCustomDomainAndWaf(stack, 'App', {
         lambdaEntry: TEST_LAMBDA_ENTRY,
         partitionKey: TEST_PARTITION_KEY,
@@ -1035,6 +1115,8 @@ describe('ServerlessSpa Factory Methods', () => {
       expect(spa.webAclArn).toBeDefined();
       expect(spa.secretArn).toBeDefined();
       expect(spa.securityCustomHeaderName).toBeDefined();
+      expect(spa.certificateArn).toBeDefined();
+      expect(spa.certificate).toBeDefined();
     });
 
     /**

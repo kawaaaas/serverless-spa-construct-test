@@ -39,6 +39,43 @@ describe('SsmConstruct', () => {
       template.resourceCountIs('AWS::SSM::Parameter', 4);
     });
 
+    test('creates exactly 4 SSM Parameters with certificate ARN', () => {
+      new SsmConstruct(stack, 'Ssm', {
+        ...defaultProps,
+        certificateArn:
+          'arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012',
+      });
+
+      const template = Template.fromStack(stack);
+      template.resourceCountIs('AWS::SSM::Parameter', 4);
+    });
+
+    test('creates certificate-arn parameter with correct value', () => {
+      const certArn =
+        'arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012';
+      new SsmConstruct(stack, 'Ssm', {
+        ...defaultProps,
+        certificateArn: certArn,
+      });
+
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::SSM::Parameter', {
+        Name: '/myapp/security/certificate-arn',
+        Value: certArn,
+        Type: 'String',
+        Description: 'ACM certificate ARN for CloudFront custom domain',
+      });
+    });
+
+    test('does not create certificate-arn parameter when certificateArn is not provided', () => {
+      new SsmConstruct(stack, 'Ssm', defaultProps);
+
+      const template = Template.fromStack(stack);
+      const params = template.findResources('AWS::SSM::Parameter');
+      const paramNames = Object.values(params).map((p) => p.Properties.Name);
+      expect(paramNames).not.toContain('/myapp/security/certificate-arn');
+    });
+
     test('creates waf-acl-arn parameter with correct value', () => {
       new SsmConstruct(stack, 'Ssm', defaultProps);
 
@@ -155,6 +192,22 @@ describe('SsmConstruct', () => {
       const ssm = new SsmConstruct(stack, 'Ssm', defaultProps);
 
       expect(ssm.edgeFunctionVersionArnParameter).toBeUndefined();
+    });
+
+    test('exposes certificateArnParameter property when provided', () => {
+      const ssm = new SsmConstruct(stack, 'Ssm', {
+        ...defaultProps,
+        certificateArn:
+          'arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012',
+      });
+
+      expect(ssm.certificateArnParameter).toBeDefined();
+    });
+
+    test('certificateArnParameter is undefined when not provided', () => {
+      const ssm = new SsmConstruct(stack, 'Ssm', defaultProps);
+
+      expect(ssm.certificateArnParameter).toBeUndefined();
     });
 
     test('exposes ssmPrefix property with default value', () => {

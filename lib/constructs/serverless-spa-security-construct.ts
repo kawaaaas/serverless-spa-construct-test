@@ -1,5 +1,6 @@
 import { RemovalPolicy, Stack, Token } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
+import { CertificateConstruct } from './certificate-construct';
 import { LambdaEdgeConstruct } from './lambda-edge-construct';
 import { SecretConstruct, SecretConstructProps } from './secret-construct';
 import { SsmConstruct, SsmConstructProps } from './ssm-construct';
@@ -74,6 +75,69 @@ export interface WithWafSecurityProps {
 }
 
 /**
+ * Domain-related properties for certificate creation.
+ */
+export interface CertificateDomainProps {
+  /** The primary domain name for the certificate. */
+  readonly domainName: string;
+  /** Route53 hosted zone ID for DNS validation. */
+  readonly hostedZoneId: string;
+  /** Route53 hosted zone name for DNS validation. */
+  readonly zoneName: string;
+  /** Additional domain names (Subject Alternative Names) for the certificate. */
+  readonly alternativeDomainNames?: string[];
+}
+
+/**
+ * Props for ServerlessSpaSecurityConstruct.withCertificate() - Custom header + certificate (no WAF).
+ *
+ * @example
+ * ```typescript
+ * ServerlessSpaSecurityConstruct.withCertificate(this, 'Security', {
+ *   ssmPrefix: '/myapp/security/',
+ *   domainName: 'www.example.com',
+ *   hostedZoneId: 'Z1234567890ABC',
+ *   zoneName: 'example.com',
+ * });
+ * ```
+ */
+export interface WithCertificateSecurityProps extends CertificateDomainProps {
+  // === REQUIRED ===
+  /** SSM Parameter Store prefix for cross-region sharing */
+  readonly ssmPrefix: string;
+
+  // === OPTIONAL ===
+  /** Advanced customization options */
+  readonly advanced?: SecurityAdvancedOptions;
+}
+
+/**
+ * Props for ServerlessSpaSecurityConstruct.withWafAndCertificate() - WAF + custom header + certificate.
+ *
+ * @example
+ * ```typescript
+ * ServerlessSpaSecurityConstruct.withWafAndCertificate(this, 'Security', {
+ *   ssmPrefix: '/myapp/security/',
+ *   rateLimit: 3000,
+ *   domainName: 'www.example.com',
+ *   hostedZoneId: 'Z1234567890ABC',
+ *   zoneName: 'example.com',
+ * });
+ * ```
+ */
+export interface WithWafAndCertificateSecurityProps extends CertificateDomainProps {
+  // === REQUIRED ===
+  /** SSM Parameter Store prefix for cross-region sharing */
+  readonly ssmPrefix: string;
+
+  // === OPTIONAL ===
+  /** WAF rate limit (requests per 5 minutes) @default 2000 */
+  readonly rateLimit?: number;
+  /** Advanced customization options */
+  readonly advanced?: SecurityAdvancedOptions;
+}
+
+/**
  * Legacy props for direct constructor usage.
  * Prefer using factory methods for clearer API.
  */
@@ -130,6 +194,35 @@ export interface ServerlessSpaSecurityConstructProps {
    * @default RemovalPolicy.DESTROY
    */
   readonly removalPolicy?: RemovalPolicy;
+
+  /**
+   * Whether to create ACM certificate in us-east-1.
+   * @default false
+   */
+  readonly enableCertificate?: boolean;
+
+  /**
+   * The primary domain name for the certificate.
+   * Required when enableCertificate is true.
+   */
+  readonly domainName?: string;
+
+  /**
+   * Route53 hosted zone ID for DNS validation.
+   * Required when enableCertificate is true.
+   */
+  readonly hostedZoneId?: string;
+
+  /**
+   * Route53 hosted zone name for DNS validation.
+   * Required when enableCertificate is true.
+   */
+  readonly zoneName?: string;
+
+  /**
+   * Additional domain names (Subject Alternative Names) for the certificate.
+   */
+  readonly alternativeDomainNames?: string[];
 }
 
 /**
@@ -220,6 +313,64 @@ export class ServerlessSpaSecurityConstruct extends Construct {
     });
   }
 
+  /**
+   * Creates a ServerlessSpaSecurityConstruct with custom header + ACM certificate (no WAF).
+   * Best for: Custom domain deployments without WAF protection.
+   */
+  public static withCertificate(
+    scope: Construct,
+    id: string,
+    props: WithCertificateSecurityProps
+  ): ServerlessSpaSecurityConstruct {
+    return new ServerlessSpaSecurityConstruct(scope, id, {
+      enableWaf: false,
+      enableCustomHeader: true,
+      enableCertificate: true,
+      domainName: props.domainName,
+      hostedZoneId: props.hostedZoneId,
+      zoneName: props.zoneName,
+      alternativeDomainNames: props.alternativeDomainNames,
+      ssm: {
+        ssmPrefix: props.ssmPrefix,
+      },
+      secret: props.advanced?.secret,
+      replicaRegions: props.advanced?.replicaRegions,
+      edgeCacheTtlSeconds: props.advanced?.edgeCacheTtlSeconds,
+      removalPolicy: props.advanced?.removalPolicy,
+    });
+  }
+
+  /**
+   * Creates a ServerlessSpaSecurityConstruct with WAF + custom header + ACM certificate.
+   * Best for: Production custom domain deployments with full security.
+   */
+  public static withWafAndCertificate(
+    scope: Construct,
+    id: string,
+    props: WithWafAndCertificateSecurityProps
+  ): ServerlessSpaSecurityConstruct {
+    return new ServerlessSpaSecurityConstruct(scope, id, {
+      enableWaf: true,
+      enableCustomHeader: true,
+      enableCertificate: true,
+      domainName: props.domainName,
+      hostedZoneId: props.hostedZoneId,
+      zoneName: props.zoneName,
+      alternativeDomainNames: props.alternativeDomainNames,
+      ssm: {
+        ssmPrefix: props.ssmPrefix,
+      },
+      waf: {
+        ...props.advanced?.waf,
+        rateLimit: props.rateLimit ?? props.advanced?.waf?.rateLimit,
+      },
+      secret: props.advanced?.secret,
+      replicaRegions: props.advanced?.replicaRegions,
+      edgeCacheTtlSeconds: props.advanced?.edgeCacheTtlSeconds,
+      removalPolicy: props.advanced?.removalPolicy,
+    });
+  }
+
   // ============================================================================
   // Instance Properties
   // ============================================================================
@@ -277,9 +428,23 @@ export class ServerlessSpaSecurityConstruct extends Construct {
   public readonly edgeFunctionVersionArn?: string;
 
   /**
+   * The CertificateConstruct instance.
+   * Only available when enableCertificate is true.
+   */
+  public readonly certificateConstruct?: CertificateConstruct;
+
+  /**
+   * The ACM certificate ARN.
+   * Only available when enableCertificate is true.
+   */
+  public readonly certificateArn?: string;
+
+  /**
    * Protected constructor - use factory methods instead.
    * @see ServerlessSpaSecurityConstruct.minimal
    * @see ServerlessSpaSecurityConstruct.withWaf
+   * @see ServerlessSpaSecurityConstruct.withCertificate
+   * @see ServerlessSpaSecurityConstruct.withWafAndCertificate
    */
   // eslint-disable-next-line cdk/construct-props-struct-name
   protected constructor(scope: Construct, id: string, props?: ServerlessSpaSecurityConstructProps) {
@@ -332,6 +497,24 @@ export class ServerlessSpaSecurityConstruct extends Construct {
       this.edgeFunctionVersionArn = this.lambdaEdge.functionVersion.functionArn;
     }
 
+    // Conditionally create CertificateConstruct
+    const enableCertificate = props?.enableCertificate ?? false;
+    if (enableCertificate) {
+      if (!props?.domainName || !props?.hostedZoneId || !props?.zoneName) {
+        throw new Error(
+          'domainName, hostedZoneId, and zoneName are required when enableCertificate is true'
+        );
+      }
+
+      this.certificateConstruct = new CertificateConstruct(this, 'Certificate', {
+        domainName: props.domainName,
+        hostedZoneId: props.hostedZoneId,
+        zoneName: props.zoneName,
+        alternativeDomainNames: props.alternativeDomainNames,
+      });
+      this.certificateArn = this.certificateConstruct.certificateArn;
+    }
+
     // Create SsmConstruct with auto-wired values from other constructs
     this.ssm = new SsmConstruct(this, 'Ssm', {
       ssmPrefix: ssmPrefix,
@@ -339,6 +522,7 @@ export class ServerlessSpaSecurityConstruct extends Construct {
       customHeaderName: this.customHeaderName, // Auto-wired from SecretConstruct (if enabled)
       secretArn: this.secretArn, // Auto-wired from SecretConstruct (if enabled)
       edgeFunctionVersionArn: this.edgeFunctionVersionArn, // Auto-wired from LambdaEdgeConstruct (if enabled)
+      certificateArn: this.certificateArn, // Auto-wired from CertificateConstruct (if enabled)
     });
 
     // Set convenience properties

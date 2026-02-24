@@ -1,6 +1,7 @@
 import { App, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { RestApi } from 'aws-cdk-lib/aws-apigateway';
+import { Certificate } from 'aws-cdk-lib/aws-certificatemanager';
 import { Code, Function as LambdaFunction, Runtime, Version } from 'aws-cdk-lib/aws-lambda';
 import { FrontendConstruct } from '../../lib/constructs/frontend-construct';
 
@@ -414,5 +415,162 @@ describe('FrontendConstruct', () => {
         },
       });
     });
+  });
+});
+
+describe('Preservation: No Custom Domain Deployment', () => {
+  let app: App;
+  let stack: Stack;
+
+  beforeEach(() => {
+    app = new App();
+    stack = new Stack(app, 'TestStack');
+  });
+
+  test('creates CloudFront distribution without certificate and domainNames when domainName is not provided', () => {
+    // Observation: FrontendConstruct without domainName creates CloudFront
+    // distribution with no certificate and no domainNames configured.
+    new FrontendConstruct(stack, 'Frontend');
+
+    const template = Template.fromStack(stack);
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: {
+        Aliases: Match.absent(),
+        ViewerCertificate: Match.absent(),
+      },
+    });
+  });
+
+  test('applies provided external certificate to CloudFront distribution', () => {
+    // Observation: When domainName and an externally-created certificate are
+    // provided, the certificate is applied to the CloudFront distribution.
+    const certArn =
+      'arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012';
+    const certificate = Certificate.fromCertificateArn(stack, 'ImportedCert', certArn);
+
+    new FrontendConstruct(stack, 'Frontend', {
+      domainName: 'www.example.com',
+      certificate,
+    });
+
+    const template = Template.fromStack(stack);
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: {
+        Aliases: ['www.example.com'],
+        ViewerCertificate: Match.objectLike({
+          AcmCertificateArn: certArn,
+          SslSupportMethod: 'sni-only',
+        }),
+      },
+    });
+  });
+
+  test('does not create ACM certificate resource when domainName is not provided', () => {
+    // Observation: FrontendConstruct without domainName does not create any
+    // AWS::CertificateManager::Certificate resource.
+    new FrontendConstruct(stack, 'Frontend');
+
+    const template = Template.fromStack(stack);
+    template.resourceCountIs('AWS::CertificateManager::Certificate', 0);
+  });
+});
+
+describe('Bug Condition Exploration: Certificate Region', () => {
+  let app: App;
+  let stack: Stack;
+
+  beforeEach(() => {
+    app = new App();
+    // Use ap-northeast-1 to simulate non-us-east-1 main stack region
+    stack = new Stack(app, 'TestStack', {
+      env: { region: 'ap-northeast-1', account: '123456789012' },
+    });
+  });
+
+  test('should throw validation error when domainName is provided without certificate', () => {
+    // Bug condition: domainName + hostedZoneId + zoneName provided, but certificate is NOT provided.
+    // Expected behavior (post-fix): FrontendConstruct should throw a validation error
+    // requiring an externally-created us-east-1 certificate.
+    // Current behavior (pre-fix): FrontendConstruct creates a certificate in the main stack
+    // region (ap-northeast-1), which is invalid for CloudFront.
+    expect(() => {
+      new FrontendConstruct(stack, 'Frontend', {
+        domainName: 'www.example.com',
+        hostedZoneId: 'Z1234567890ABC',
+        zoneName: 'example.com',
+      });
+    }).toThrow();
+  });
+});
+
+describe('Certificate Validation (Post-Fix)', () => {
+  let app: App;
+  let stack: Stack;
+
+  beforeEach(() => {
+    app = new App();
+    stack = new Stack(app, 'TestStack', {
+      env: { region: 'ap-northeast-1', account: '123456789012' },
+    });
+  });
+
+  test('throws validation error when domainName is provided without certificate', () => {
+    expect(() => {
+      new FrontendConstruct(stack, 'Frontend', {
+        domainName: 'www.example.com',
+      });
+    }).toThrow(/certificate is required when domainName is provided/);
+  });
+
+  test('throws validation error with guidance message mentioning ServerlessSpaSecurityConstruct', () => {
+    expect(() => {
+      new FrontendConstruct(stack, 'Frontend', {
+        domainName: 'www.example.com',
+        hostedZoneId: 'Z1234567890ABC',
+        zoneName: 'example.com',
+      });
+    }).toThrow(/ServerlessSpaSecurityConstruct/);
+  });
+
+  test('works correctly when domainName and certificate are both provided', () => {
+    const certArn =
+      'arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012';
+    const certificate = Certificate.fromCertificateArn(stack, 'ImportedCert', certArn);
+
+    const frontend = new FrontendConstruct(stack, 'Frontend', {
+      domainName: 'www.example.com',
+      certificate,
+      hostedZoneId: 'Z1234567890ABC',
+      zoneName: 'example.com',
+    });
+
+    const template = Template.fromStack(stack);
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: {
+        Aliases: ['www.example.com'],
+        ViewerCertificate: Match.objectLike({
+          AcmCertificateArn: certArn,
+          SslSupportMethod: 'sni-only',
+        }),
+      },
+    });
+    // Verify Route53 A record is created
+    template.resourceCountIs('AWS::Route53::RecordSet', 1);
+    expect(frontend.certificate).toBeDefined();
+  });
+
+  test('does not create ACM certificate resource when external certificate is provided', () => {
+    const certArn =
+      'arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012';
+    const certificate = Certificate.fromCertificateArn(stack, 'ImportedCert', certArn);
+
+    new FrontendConstruct(stack, 'Frontend', {
+      domainName: 'www.example.com',
+      certificate,
+    });
+
+    const template = Template.fromStack(stack);
+    // FrontendConstruct must NOT create any ACM certificate resource itself
+    template.resourceCountIs('AWS::CertificateManager::Certificate', 0);
   });
 });

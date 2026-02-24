@@ -13,11 +13,14 @@ export class ServerlessSpaMainStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Create the ServerlessSpaConstruct with WAF security integration
-    this.serverlessSpa = ServerlessSpaConstruct.withWaf(this, 'ServerlessSpa', {
+    // Create the ServerlessSpaConstruct with custom domain and WAF security integration
+    this.serverlessSpa = ServerlessSpaConstruct.withCustomDomainAndWaf(this, 'ServerlessSpa', {
       lambdaEntry: path.join(__dirname, '../lambda/handler.ts'),
       partitionKey: { name: 'PK', type: AttributeType.STRING },
       sortKey: { name: 'SK', type: AttributeType.STRING },
+      domainName: 'www.kawaaaas.com',
+      hostedZoneId: 'Z05304943LWOKTQXC7P8D',
+      zoneName: 'kawaaaas.com',
       ssmPrefix: '/serverless-spa/security/',
       securityRegion: 'us-east-1',
       advanced: {

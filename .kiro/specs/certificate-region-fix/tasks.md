@@ -1,0 +1,134 @@
+# 実装計画
+
+- [x] 1. バグ条件探索テストの作成
+  - **Property 1: Fault Condition** - FrontendConstructがメインリージョンでACM証明書を自動作成する
+  - **CRITICAL**: このテストは未修正コードで失敗（FAIL）すること。失敗はバグの存在を確認するものである
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: このテストは期待される動作をエンコードしており、修正後にパスすることで修正を検証する
+  - **GOAL**: FrontendConstructがメインスタックリージョンで証明書を作成してしまうカウンターサンプルを表面化させる
+  - **Scoped PBT Approach**: domainNameあり + certificateなし + hostedZoneId/zoneNameありの具体的なケースにスコープ
+  - テストファイル: `test/constructs/frontend-construct.test.ts` に追加
+  - テスト内容:
+    - FrontendConstructにdomainName、hostedZoneId、zoneNameを渡し、certificateを渡さない場合、`AWS::CertificateManager::Certificate`リソースがFrontendConstruct内に作成されることを確認（未修正コードでの動作）
+    - 修正後の期待動作: domainNameありcertificateなしの場合にバリデーションエラーがスローされること
+  - 未修正コードでテスト実行 → テストがFAIL（期待通り - バグの存在を確認）
+  - カウンターサンプルを記録: 「FrontendConstructがメインスタックリージョンで`AWS::CertificateManager::Certificate`を作成してしまう」
+  - テスト作成・実行・失敗記録が完了したらタスク完了とする
+  - _Requirements: 1.1, 1.2, 1.3_
+
+- [x] 2. 保全プロパティテストの作成（修正実装前）
+  - **Property 2: Preservation** - カスタムドメインなしデプロイの動作維持
+  - **IMPORTANT**: 観察ファーストの方法論に従う
+  - テストファイル: `test/constructs/frontend-construct.test.ts` に追加
+  - 観察ファーストの手順:
+    - 観察: FrontendConstructをdomainNameなしで作成 → CloudFrontディストリビューションが証明書なしで正常作成される
+    - 観察: FrontendConstructにdomainNameとcertificate（外部作成済み）を渡す → 提供された証明書がCloudFrontに適用される
+    - 観察: FrontendConstructをdomainNameなしで作成 → `AWS::CertificateManager::Certificate`リソースが作成されない
+  - テスト内容:
+    - domainNameなしの場合: CloudFrontディストリビューションが証明書なし・domainNamesなしで作成されること
+    - 外部証明書直接渡しの場合: 提供された証明書がCloudFrontディストリビューションに適用されること
+    - domainNameなしの場合: `AWS::CertificateManager::Certificate`リソースが0個であること
+  - 未修正コードでテスト実行 → テストがPASS（ベースライン動作の確認）
+  - テスト作成・実行・パス確認が完了したらタスク完了とする
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [x] 3. ACM証明書リージョン修正の実装
+  - [x] 3.1 CertificateConstruct新規作成
+    - ファイル: `lib/constructs/certificate-construct.ts`（新規作成）
+    - WafConstructと同様の低レベルコンストラクトとして実装
+    - Props: `domainName`（必須）、`hostedZoneId`（必須）、`zoneName`（必須）、`alternativeDomainNames`（オプション）
+    - DNS検証を使用（`CertificateValidation.fromDns(hostedZone)`）
+    - 公開プロパティ: `certificate: ICertificate`、`certificateArn: string`
+    - ユニットテスト: `test/constructs/certificate-construct.test.ts`（新規作成）
+      - ACM証明書がDNS検証で作成されること
+      - domainName/alternativeDomainNamesが正しく設定されること
+    - _Bug_Condition: isBugCondition(input) where input.domainName IS NOT undefined AND input.certificate IS undefined_
+    - _Expected_Behavior: CertificateConstructがus-east-1でACM証明書を作成し、certificateArn を公開する_
+    - _Requirements: 2.1, 2.2_
+
+  - [x] 3.2 SsmConstructProps拡張
+    - ファイル: `lib/constructs/ssm-construct.ts`
+    - `certificateArn?: string` プロパティをSsmConstructPropsに追加
+    - 新しいSSMパラメータ `{ssmPrefix}certificate-arn` を条件付きで作成
+    - 公開プロパティ: `certificateArnParameter?: IStringParameter`
+    - ユニットテスト: `test/constructs/ssm-construct.test.ts` に追加
+      - certificateArnが渡された場合にSSMパラメータが作成されること
+      - certificateArnが渡されない場合はSSMパラメータが作成されないこと（既存テストで確認済み）
+    - _Requirements: 2.1, 2.2_
+
+  - [x] 3.3 ServerlessSpaSecurityConstructにファクトリメソッド追加
+    - ファイル: `lib/constructs/serverless-spa-security-construct.ts`
+    - 新規Props型: `WithCertificateSecurityProps`、`WithWafAndCertificateSecurityProps`
+    - 新規ファクトリメソッド:
+      - `withCertificate(scope, id, props)`: カスタムヘッダー + 証明書（WAFなし）
+      - `withWafAndCertificate(scope, id, props)`: WAF + カスタムヘッダー + 証明書
+    - コンストラクタ拡張: `enableCertificate`フラグとドメイン関連propsを受け取り、CertificateConstructを条件付きで作成
+    - 証明書ARNをSsmConstructに渡してSSMパラメータに保存
+    - 公開プロパティ追加: `certificateConstruct?: CertificateConstruct`、`certificateArn`に証明書ARNも含める
+    - ユニットテスト: `test/constructs/serverless-spa-security-construct.test.ts` に追加
+      - withCertificate()で証明書+SSMパラメータが作成されること
+      - withWafAndCertificate()でWAF+証明書+SSMパラメータが作成されること
+      - 既存のminimal()、withWaf()が従来通り動作すること
+    - _Bug_Condition: isBugCondition(input) where input.domainName IS NOT undefined AND input.certificate IS undefined_
+    - _Expected_Behavior: ServerlessSpaSecurityConstructがus-east-1でCertificateConstructを作成し、証明書ARNをSSMに保存_
+    - _Preservation: 既存のminimal()、withWaf()ファクトリメソッドの動作が変更されない_
+    - _Requirements: 2.1, 2.2, 3.4_
+
+  - [x] 3.4 ServerlessSpaConstruct修正（withCustomDomain / withCustomDomainAndWaf）
+    - ファイル: `lib/constructs/serverless-spa.ts`
+    - `WithCustomDomainProps`にssmPrefix、securityRegionを追加
+    - withCustomDomain / withCustomDomainAndWafでSSMリーダーに`certificate-arn`パラメータを追加取得
+    - `Certificate.fromCertificateArn()`でICertificateに変換してFrontendConstructに渡す
+    - ユニットテスト: `test/constructs/serverless-spa.test.ts` に追加
+      - withCustomDomain()でSSMから証明書ARNを取得しFrontendConstructに渡すこと
+      - withCustomDomainAndWaf()で同様に動作すること
+    - _Bug_Condition: isBugCondition(input) where input.domainName IS NOT undefined AND input.certificate IS undefined AND Stack.of(this).region != 'us-east-1'_
+    - _Expected_Behavior: SSM経由でus-east-1の証明書ARNを取得し、Certificate.fromCertificateArnでICertificateに変換してFrontendConstructに渡す_
+    - _Preservation: minimal()、withWaf()の動作が変更されない_
+    - _Requirements: 2.3, 3.1, 3.2_
+
+  - [x] 3.5 FrontendConstruct修正（自前証明書作成ロジック削除）
+    - ファイル: `lib/constructs/frontend-construct.ts`
+    - `new Certificate()` による自動作成コードを削除
+    - バリデーション変更: domainNameが指定されcertificateが未指定の場合、エラーをスロー
+      - エラーメッセージ: 証明書はus-east-1で作成する必要があり、ServerlessSpaSecurityConstructのwithCertificate/withWafAndCertificateを使用するか、外部で作成した証明書を渡すよう案内
+    - `Certificate`、`CertificateValidation` のimportを削除
+    - ユニットテスト: `test/constructs/frontend-construct.test.ts` に追加
+      - domainNameありcertificateなしでバリデーションエラーがスローされること
+      - certificateありで正常動作すること
+      - `AWS::CertificateManager::Certificate`リソースがFrontendConstruct内に作成されないこと
+    - _Bug_Condition: isBugCondition(input) where input.domainName IS NOT undefined AND input.certificate IS undefined_
+    - _Expected_Behavior: バリデーションエラーをスローし、証明書の外部注入を必須とする_
+    - _Preservation: 外部証明書直接渡しの動作が変更されない_
+    - _Requirements: 2.4, 3.3_
+
+  - [x] 3.6 エクスポート追加
+    - ファイル: `lib/index.ts`
+    - `CertificateConstruct` と `CertificateConstructProps` をエクスポート
+    - 新規Props型（`WithCertificateSecurityProps`、`WithWafAndCertificateSecurityProps`）をエクスポート
+    - `WithCustomDomainProps`（更新済み）のエクスポートを確認
+    - _Requirements: 2.1, 2.2_
+
+  - [x] 3.7 コード品質チェック
+    - `npm run format` でフォーマット
+    - `npm run lint` でリントチェック
+    - エラーがあれば修正
+
+  - [x] 3.8 バグ条件探索テストがパスすることを確認
+    - **Property 1: Expected Behavior** - FrontendConstructがdomainNameありcertificateなしでバリデーションエラーをスロー
+    - **IMPORTANT**: タスク1と同じテストを再実行する。新しいテストは書かない
+    - タスク1のテストは期待される動作をエンコードしている
+    - テストがパスすれば、期待される動作が満たされたことを確認
+    - テスト実行 → テストがPASS（バグ修正を確認）
+    - _Requirements: 2.4_
+
+  - [x] 3.9 保全テストが引き続きパスすることを確認
+    - **Property 2: Preservation** - カスタムドメインなしデプロイの動作維持
+    - **IMPORTANT**: タスク2と同じテストを再実行する。新しいテストは書かない
+    - テスト実行 → テストがPASS（リグレッションなしを確認）
+    - 修正後もすべてのテストがパスすることを確認
+
+- [x] 4. チェックポイント - 全テストパスの確認
+  - 全テスト実行: `npm test`
+  - すべてのテストがパスすることを確認
+  - 疑問があればユーザーに確認

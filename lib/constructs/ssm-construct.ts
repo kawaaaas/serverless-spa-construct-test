@@ -40,6 +40,13 @@ export interface SsmConstructProps {
    * Optional - only required when custom header is enabled.
    */
   readonly edgeFunctionVersionArn?: string;
+
+  /**
+   * ACM certificate ARN to store in SSM.
+   * Used for cross-region certificate sharing with CloudFront.
+   * Optional - only required when certificate is created in security stack.
+   */
+  readonly certificateArn?: string;
 }
 
 /**
@@ -92,6 +99,12 @@ export class SsmConstruct extends Construct {
   public readonly edgeFunctionVersionArnParameter?: IStringParameter;
 
   /**
+   * The SSM Parameter for ACM certificate ARN.
+   * Only created when certificateArn is provided.
+   */
+  public readonly certificateArnParameter?: IStringParameter;
+
+  /**
    * The SSM prefix used for parameters.
    */
   public readonly ssmPrefix: string;
@@ -140,6 +153,15 @@ export class SsmConstruct extends Construct {
           description: 'Lambda@Edge function version ARN for CloudFront origin request',
         }
       );
+    }
+
+    // Create SSM Parameter for ACM certificate ARN (if provided)
+    if (props.certificateArn) {
+      this.certificateArnParameter = new StringParameter(this, 'CertificateArnParameter', {
+        parameterName: `${this.ssmPrefix}certificate-arn`,
+        stringValue: props.certificateArn,
+        description: 'ACM certificate ARN for CloudFront custom domain',
+      });
     }
   }
 }

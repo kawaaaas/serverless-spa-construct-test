@@ -1,9 +1,5 @@
 import { RestApi } from 'aws-cdk-lib/aws-apigateway';
-import {
-  Certificate,
-  CertificateValidation,
-  ICertificate,
-} from 'aws-cdk-lib/aws-certificatemanager';
+import { ICertificate } from 'aws-cdk-lib/aws-certificatemanager';
 import {
   AllowedMethods,
   CachePolicy,
@@ -57,8 +53,9 @@ export interface FrontendConstructProps {
 
   /**
    * ACM certificate for the custom domain.
-   * If not provided but domainName and hostedZone are set, a certificate will be automatically created.
-   * Must be in us-east-1 region for CloudFront.
+   * Required when domainName is provided. Must be in us-east-1 region for CloudFront.
+   * Use ServerlessSpaSecurityConstruct.withCertificate() or withWafAndCertificate()
+   * to create a certificate in us-east-1, or provide an externally created certificate.
    */
   readonly certificate?: ICertificate;
 
@@ -155,10 +152,12 @@ export class FrontendConstruct extends Construct {
     super(scope, id);
 
     // Validate custom domain configuration
-    if (props?.domainName && !props?.certificate && !(props?.hostedZoneId && props?.zoneName)) {
+    if (props?.domainName && !props?.certificate) {
       throw new Error(
-        'Either certificate or (hostedZoneId + zoneName) is required when domainName is provided. ' +
-          'Provide hostedZoneId and zoneName for automatic certificate creation, or provide an existing certificate.'
+        'certificate is required when domainName is provided. ' +
+          'CloudFront requires an ACM certificate in us-east-1. ' +
+          'Use ServerlessSpaSecurityConstruct.withCertificate() or withWafAndCertificate() ' +
+          'to create a certificate in us-east-1, or provide an externally created certificate.'
       );
     }
 
@@ -176,18 +175,7 @@ export class FrontendConstruct extends Construct {
       });
     }
 
-    // Auto-create certificate if domainName and hostedZone are provided but certificate is not
-    let certificate = props?.certificate;
-    if (props?.domainName && hostedZone && !certificate) {
-      // Build subject alternative names from alternativeDomainNames
-      const subjectAlternativeNames = props.alternativeDomainNames;
-
-      certificate = new Certificate(this, 'Certificate', {
-        domainName: props.domainName,
-        subjectAlternativeNames,
-        validation: CertificateValidation.fromDns(hostedZone),
-      });
-    }
+    const certificate = props?.certificate;
 
     this.certificate = certificate;
 
