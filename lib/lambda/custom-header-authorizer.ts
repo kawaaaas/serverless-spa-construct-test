@@ -257,7 +257,7 @@ function getJwtVerifier(): ReturnType<typeof CognitoJwtVerifier.create> {
 
     jwtVerifier = CognitoJwtVerifier.create({
       userPoolId,
-      tokenUse: 'access',
+      tokenUse: 'id',
       clientId,
     });
   }
