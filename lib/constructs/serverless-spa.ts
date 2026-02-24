@@ -519,6 +519,11 @@ export class ServerlessSpaConstruct extends Construct {
 
       // Create individual AwsCustomResource for each SSM parameter to avoid
       // ordering issues with getParameters API (response order is not guaranteed)
+      //
+      // Note: physicalResourceId includes Date.now() to force CloudFormation to
+      // re-invoke the custom resource on every deployment. Without this, the
+      // static physical resource ID causes CloudFormation to skip the update,
+      // leaving stale values (e.g., outdated Lambda@Edge version ARNs).
       const createSsmReader = (readerId: string, paramName: string): AwsCustomResource => {
         const call = {
           service: 'SSM',
@@ -527,7 +532,7 @@ export class ServerlessSpaConstruct extends Construct {
             Name: `${ssmPrefix}${paramName}`,
           },
           region: securityRegion,
-          physicalResourceId: PhysicalResourceId.of(`${id}-ssm-${paramName}`),
+          physicalResourceId: PhysicalResourceId.of(`${id}-ssm-${paramName}-${Date.now()}`),
         };
         return new AwsCustomResource(this, readerId, {
           onCreate: call,

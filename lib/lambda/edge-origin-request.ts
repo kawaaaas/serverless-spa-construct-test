@@ -45,12 +45,21 @@ function getSecretRegion(): string {
  * Lambda@Edge runs at edge locations worldwide, so we must explicitly
  * specify us-east-1 where the secret is stored.
  * Initialized lazily to ensure build-time define values are resolved.
+ *
+ * Note: We use an explicit endpoint URL in addition to the region option
+ * because the Lambda@Edge runtime SDK may ignore the region parameter
+ * and fall back to AWS_REGION (the edge location's region), causing
+ * cross-region AccessDeniedException errors.
  */
 let _secretsManager: SecretsManagerClient | null = null;
 
 function getSecretsManagerClient(): SecretsManagerClient {
   if (!_secretsManager) {
-    _secretsManager = new SecretsManagerClient({ region: getSecretRegion() });
+    const region = getSecretRegion();
+    _secretsManager = new SecretsManagerClient({
+      region,
+      endpoint: `https://secretsmanager.${region}.amazonaws.com`,
+    });
   }
   return _secretsManager;
 }
