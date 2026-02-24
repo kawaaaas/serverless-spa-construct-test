@@ -19,6 +19,7 @@ export class ServerlessSpaMainStack extends cdk.Stack {
       partitionKey: { name: 'PK', type: AttributeType.STRING },
       sortKey: { name: 'SK', type: AttributeType.STRING },
       domainName: 'www.kawaaaas.com',
+      alternativeDomainNames: ['kawaaaas.com'],
       hostedZoneId: 'Z05304943LWOKTQXC7P8D',
       zoneName: 'kawaaaas.com',
       ssmPrefix: '/serverless-spa/security/',

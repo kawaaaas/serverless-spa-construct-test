@@ -22,6 +22,7 @@ export class ServerlessSpaSecurityStack extends cdk.Stack {
       domainName: 'www.kawaaaas.com',
       hostedZoneId: 'Z05304943LWOKTQXC7P8D',
       zoneName: 'kawaaaas.com',
+      alternativeDomainNames: ['kawaaaas.com'],
     });
   }
 }

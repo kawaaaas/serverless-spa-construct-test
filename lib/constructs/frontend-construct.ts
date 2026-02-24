@@ -298,6 +298,17 @@ function handler(event) {
         recordName: props.domainName,
         target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
       });
+
+      // Create Route53 A records for alternative domain names
+      if (props.alternativeDomainNames) {
+        props.alternativeDomainNames.forEach((altDomain, index) => {
+          new ARecord(this, `AltDnsRecord${index}`, {
+            zone: hostedZone!,
+            recordName: altDomain,
+            target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
+          });
+        });
+      }
     }
   }
 }
