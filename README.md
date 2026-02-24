@@ -73,24 +73,42 @@ npx cdk destroy --all
 
 ```
 ├── bin/
-│   └── serverless-spa-construct-test.ts  # CDKアプリエントリーポイント
+│   └── serverless-spa-construct-test.ts    # CDKアプリエントリーポイント
 ├── lib/
-│   ├── constructs/                       # カスタムコンストラクト
-│   │   ├── serverless-spa.ts             # 高レベルAPI
+│   ├── constructs/                         # カスタムコンストラクト
+│   │   ├── serverless-spa.ts               # 高レベルAPI
 │   │   ├── serverless-spa-security-construct.ts
-│   │   ├── frontend-construct.ts         # 低レベルAPI
-│   │   ├── auth-construct.ts
-│   │   ├── api-construct.ts
-│   │   ├── database-construct.ts
-│   │   ├── waf-construct.ts
-│   │   ├── secret-construct.ts
-│   │   └── ssm-construct.ts
-│   ├── serverless-spa-main-stack.ts      # メインスタック定義
-│   ├── serverless-spa-security-stack.ts  # セキュリティスタック定義
-│   └── index.ts                          # エクスポート
+│   │   ├── frontend-construct.ts           # 低レベルAPI: S3 + CloudFront
+│   │   ├── auth-construct.ts               # 低レベルAPI: Cognito
+│   │   ├── api-construct.ts                # 低レベルAPI: API Gateway + Lambda
+│   │   ├── database-construct.ts           # 低レベルAPI: DynamoDB
+│   │   ├── lambda-edge-construct.ts        # Lambda@Edge
+│   │   ├── waf-construct.ts                # WAF
+│   │   ├── secret-construct.ts             # Secrets Manager
+│   │   └── ssm-construct.ts                # SSM Parameter Store
+│   ├── lambda/                             # Lambda関数ソース
+│   │   ├── custom-header-authorizer.ts     # カスタムヘッダー認可
+│   │   ├── edge-origin-request.ts          # Edge オリジンリクエスト
+│   │   └── rotation-handler.ts             # シークレットローテーション
+│   ├── serverless-spa-main-stack.ts        # メインスタック定義
+│   ├── serverless-spa-security-stack.ts    # セキュリティスタック定義
+│   └── index.ts                            # エクスポート
 ├── lambda/
-│   └── handler.ts                        # サンプルLambdaハンドラー
-└── test/                                 # テスト
+│   └── handler.ts                          # サンプルLambdaハンドラー
+├── spa/                                    # フロントエンドSPA（Vite + React）
+│   ├── src/
+│   │   ├── pages/                          # ページコンポーネント
+│   │   ├── App.tsx
+│   │   ├── AuthContext.tsx                  # 認証コンテキスト
+│   │   ├── auth.ts                         # Cognito認証ロジック
+│   │   ├── config.ts
+│   │   ├── main.tsx
+│   │   └── ProtectedRoute.tsx              # 認証ガード
+│   ├── index.html
+│   └── vite.config.ts
+└── test/                                   # テスト
+    ├── constructs/                         # コンストラクトテスト
+    └── lambda/                             # Lambda関数テスト
 ```
 
 ## コマンド
