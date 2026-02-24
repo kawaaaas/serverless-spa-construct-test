@@ -202,7 +202,6 @@ export class FrontendConstruct extends Construct {
     const bucket = new Bucket(this, 'Bucket', {
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       publicReadAccess: false,
-      autoDeleteObjects: true,
       ...props?.bucketProps,
     });
 
