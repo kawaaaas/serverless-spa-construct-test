@@ -13,16 +13,31 @@ export class ServerlessSpaMainStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    const domainName = process.env.DOMAIN_NAME;
+    const hostedZoneId = process.env.HOSTED_ZONE_ID;
+    const zoneName = process.env.ZONE_NAME;
+    const ssmPrefix = process.env.SSM_PREFIX ?? '/serverless-spa/security/';
+    const alternativeDomainNames = process.env.ALTERNATIVE_DOMAIN_NAMES?.split(',').map((s) =>
+      s.trim()
+    );
+
+    if (!domainName || !hostedZoneId || !zoneName) {
+      throw new Error(
+        'Required environment variables are missing: DOMAIN_NAME, HOSTED_ZONE_ID, ZONE_NAME. ' +
+          'Copy .env.example to .env and fill in your values.'
+      );
+    }
+
     // Create the ServerlessSpaConstruct with custom domain and WAF security integration
     this.serverlessSpa = ServerlessSpaConstruct.withCustomDomainAndWaf(this, 'ServerlessSpa', {
       lambdaEntry: path.join(__dirname, '../lambda/handler.ts'),
       partitionKey: { name: 'PK', type: AttributeType.STRING },
       sortKey: { name: 'SK', type: AttributeType.STRING },
-      domainName: 'www.kawaaaas.com',
-      alternativeDomainNames: ['kawaaaas.com'],
-      hostedZoneId: 'Z05304943LWOKTQXC7P8D',
-      zoneName: 'kawaaaas.com',
-      ssmPrefix: '/serverless-spa/security/',
+      domainName,
+      alternativeDomainNames,
+      hostedZoneId,
+      zoneName,
+      ssmPrefix,
       securityRegion: 'us-east-1',
       advanced: {
         tags: {

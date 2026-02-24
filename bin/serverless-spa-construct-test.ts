@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib/core';
+import 'dotenv/config';
 import { ServerlessSpaMainStack } from '../lib/serverless-spa-main-stack';
 import { ServerlessSpaSecurityStack } from '../lib/serverless-spa-security-stack';
 
