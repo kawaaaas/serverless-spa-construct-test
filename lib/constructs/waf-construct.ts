@@ -91,7 +91,7 @@ export interface WafConstructProps {
 
   /**
    * Removal policy for resources.
-   * @default RemovalPolicy.DESTROY
+   * @default - Inherits from app-level RemovalPolicy setting
    */
   readonly removalPolicy?: RemovalPolicy;
 }

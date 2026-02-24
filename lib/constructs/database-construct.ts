@@ -1,4 +1,3 @@
-import { RemovalPolicy } from 'aws-cdk-lib';
 import {
   Attribute,
   AttributeType,
@@ -41,7 +40,7 @@ export interface DatabaseConstructProps {
   /**
    * Additional table properties to override defaults.
    * These will be merged with the default configuration.
-   * @default - Uses default settings (PAY_PER_REQUEST billing, DESTROY removal policy)
+   * @default - Uses default settings (PAY_PER_REQUEST billing). Removal policy inherits from app-level setting.
    */
   readonly tableProps?: Partial<TableProps>;
 }
@@ -96,7 +95,6 @@ export class DatabaseConstruct extends Construct {
       partitionKey,
       sortKey,
       billingMode: BillingMode.PAY_PER_REQUEST,
-      removalPolicy: RemovalPolicy.DESTROY,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: false },
       ...props?.tableProps,
     };

@@ -780,7 +780,7 @@ describe('ServerlessSpa Factory Methods', () => {
       });
 
       const template = Template.fromStack(stack);
-      template.resourceCountIs('Custom::AWS', 1);
+      template.resourceCountIs('Custom::AWS', 4);
     });
 
     test('retrieves SSM parameters with specified prefix', () => {
@@ -916,8 +916,8 @@ describe('ServerlessSpa Factory Methods', () => {
       // ACM certificate
       template.resourceCountIs('AWS::CertificateManager::Certificate', 1);
 
-      // SSM parameter retrieval
-      template.resourceCountIs('Custom::AWS', 1);
+      // SSM parameter retrieval (4 individual readers)
+      template.resourceCountIs('Custom::AWS', 4);
     });
 
     test('creates Route53 record and ACM certificate', () => {

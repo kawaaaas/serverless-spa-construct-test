@@ -1,8 +1,10 @@
 *.js
 !jest.config.js
-!spa/**/*.js
 *.d.ts
 node_modules
+
+# SPA build output
+spa/dist
 
 # CDK asset staging directory
 .cdk.staging

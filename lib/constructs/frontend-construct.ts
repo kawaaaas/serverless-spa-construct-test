@@ -1,4 +1,4 @@
-import { Duration, RemovalPolicy } from 'aws-cdk-lib';
+import { Duration } from 'aws-cdk-lib';
 import { RestApi } from 'aws-cdk-lib/aws-apigateway';
 import {
   Certificate,
@@ -202,7 +202,6 @@ export class FrontendConstruct extends Construct {
     const bucket = new Bucket(this, 'Bucket', {
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       publicReadAccess: false,
-      removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
       ...props?.bucketProps,
     });

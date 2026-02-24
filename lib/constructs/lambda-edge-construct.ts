@@ -1,5 +1,5 @@
 import { Arn, ArnFormat, Duration, RemovalPolicy, Stack, Token } from 'aws-cdk-lib';
-import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
+import { PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Construct } from 'constructs';
@@ -40,7 +40,7 @@ export interface LambdaEdgeConstructProps {
 
   /**
    * Removal policy for resources.
-   * @default RemovalPolicy.DESTROY
+   * @default - Inherits from app-level RemovalPolicy setting
    */
   readonly removalPolicy?: RemovalPolicy;
 }
@@ -95,7 +95,7 @@ export class LambdaEdgeConstruct extends Construct {
     // Set default values
     const customHeaderName = props.customHeaderName ?? DEFAULT_CUSTOM_HEADER_NAME;
     const cacheTtlSeconds = props.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_SECONDS;
-    const removalPolicy = props.removalPolicy ?? RemovalPolicy.DESTROY;
+    const removalPolicy = props.removalPolicy;
 
     // Create Lambda@Edge function using NodejsFunction with esbuild bundling
     // Configuration is embedded at build time using esbuild's define option
@@ -148,6 +148,18 @@ export class LambdaEdgeConstruct extends Construct {
         resources: [secretArnPattern],
       })
     );
+
+    // Add edgelambda.amazonaws.com as trusted principal for Lambda@Edge
+    // Use Role instanceof check for type-safe access to assumeRolePolicy
+    const role = this.edgeFunction.role;
+    if (role instanceof Role) {
+      role.assumeRolePolicy?.addStatements(
+        new PolicyStatement({
+          actions: ['sts:AssumeRole'],
+          principals: [new ServicePrincipal('edgelambda.amazonaws.com')],
+        })
+      );
+    }
 
     // Store the function version for CloudFront association
     this.functionVersion = this.edgeFunction.currentVersion;

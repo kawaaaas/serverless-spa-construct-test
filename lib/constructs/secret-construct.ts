@@ -64,7 +64,7 @@ export interface SecretConstructProps {
 
   /**
    * Removal policy for resources.
-   * @default RemovalPolicy.DESTROY
+   * @default - Inherits from app-level RemovalPolicy setting
    */
   readonly removalPolicy?: RemovalPolicy;
 }
@@ -141,7 +141,7 @@ export class SecretConstruct extends Construct {
     this.rotationDays = props?.rotationDays ?? DEFAULT_ROTATION_DAYS;
     this.ssmPrefix = props?.ssmPrefix ?? DEFAULT_SSM_PREFIX;
     this.replicaRegions = props?.replicaRegions ?? DEFAULT_REPLICA_REGIONS;
-    const removalPolicy = props?.removalPolicy ?? RemovalPolicy.DESTROY;
+    const removalPolicy = props?.removalPolicy;
 
     // Validate replica regions - us-east-1 cannot be a replica region (it's the primary)
     if (this.replicaRegions.includes(PRIMARY_REGION)) {

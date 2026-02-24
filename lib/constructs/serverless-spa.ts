@@ -1,5 +1,6 @@
-import { RemovalPolicy, Tags } from 'aws-cdk-lib';
+import { RemovalPolicy, Stack, Tags } from 'aws-cdk-lib';
 import { Attribute } from 'aws-cdk-lib/aws-dynamodb';
+import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Version } from 'aws-cdk-lib/aws-lambda';
 import {
   AwsCustomResource,
@@ -48,7 +49,7 @@ export interface AdvancedOptions {
   readonly frontend?: Omit<FrontendConstructProps, 'api' | 'customHeaderName' | 'webAclArn'>;
   /** Security/WAF configuration */
   readonly security?: SecurityConfig;
-  /** Removal policy for all resources @default RemovalPolicy.DESTROY */
+  /** Removal policy for all resources @default - Inherits from app-level RemovalPolicy setting */
   readonly removalPolicy?: RemovalPolicy;
   /** Tags to apply to all resources */
   readonly tags?: { [key: string]: string };
@@ -503,44 +504,59 @@ export class ServerlessSpaConstruct extends Construct {
       });
     }
 
-    const removalPolicy = props?.removalPolicy ?? RemovalPolicy.DESTROY;
-    const autoDeleteObjects = removalPolicy === RemovalPolicy.DESTROY;
+    const removalPolicy = props?.removalPolicy;
 
     // Create AwsCustomResource for cross-region SSM parameter retrieval if security config is provided
     if (props?.security) {
       const ssmPrefix = props.security.ssmPrefix ?? '/myapp/security/';
       const securityRegion = props.security.securityRegion ?? 'us-east-1';
 
-      // Create AwsCustomResource to get SSM parameters from us-east-1
-      const ssmCall = {
-        service: 'SSM',
-        action: 'getParameters',
-        parameters: {
-          Names: [
-            `${ssmPrefix}waf-acl-arn`,
-            `${ssmPrefix}custom-header-name`,
-            `${ssmPrefix}secret-arn`,
-            `${ssmPrefix}edge-function-version-arn`,
-          ],
-        },
-        region: securityRegion,
-        physicalResourceId: PhysicalResourceId.of(`${id}-ssm-params`),
+      // SSM parameter ARN pattern for least-privilege access
+      // Format: arn:aws:ssm:{region}:{account}:parameter{prefix}*
+      // Note: SSM parameter ARNs do not have a leading slash after 'parameter'
+      // when the parameter name starts with '/'
+      const ssmParameterArnPattern = `arn:aws:ssm:${securityRegion}:${Stack.of(this).account}:parameter${ssmPrefix}*`;
+
+      // Create individual AwsCustomResource for each SSM parameter to avoid
+      // ordering issues with getParameters API (response order is not guaranteed)
+      const createSsmReader = (readerId: string, paramName: string): AwsCustomResource => {
+        const call = {
+          service: 'SSM',
+          action: 'getParameter',
+          parameters: {
+            Name: `${ssmPrefix}${paramName}`,
+          },
+          region: securityRegion,
+          physicalResourceId: PhysicalResourceId.of(`${id}-ssm-${paramName}`),
+        };
+        return new AwsCustomResource(this, readerId, {
+          onCreate: call,
+          onUpdate: call,
+          policy: AwsCustomResourcePolicy.fromStatements([
+            new PolicyStatement({
+              actions: ['ssm:GetParameter'],
+              resources: [ssmParameterArnPattern],
+            }),
+          ]),
+        });
       };
 
-      this.ssmParameterReader = new AwsCustomResource(this, 'SsmParameterReader', {
-        onCreate: ssmCall,
-        onUpdate: ssmCall,
-        policy: AwsCustomResourcePolicy.fromSdkCalls({
-          resources: AwsCustomResourcePolicy.ANY_RESOURCE,
-        }),
-      });
+      const wafAclReader = createSsmReader('SsmWafAclArn', 'waf-acl-arn');
+      const headerNameReader = createSsmReader('SsmCustomHeaderName', 'custom-header-name');
+      const secretArnReader = createSsmReader('SsmSecretArn', 'secret-arn');
+      const edgeFnReader = createSsmReader(
+        'SsmEdgeFunctionVersionArn',
+        'edge-function-version-arn'
+      );
 
-      // Extract values from the response
-      this.webAclArn = this.ssmParameterReader.getResponseField('Parameters.0.Value');
-      this.securityCustomHeaderName =
-        this.ssmParameterReader.getResponseField('Parameters.1.Value');
-      this.secretArn = this.ssmParameterReader.getResponseField('Parameters.2.Value');
-      this.edgeFunctionVersionArn = this.ssmParameterReader.getResponseField('Parameters.3.Value');
+      // Keep reference to one reader for backward compatibility
+      this.ssmParameterReader = wafAclReader;
+
+      // Extract values from individual responses
+      this.webAclArn = wafAclReader.getResponseField('Parameter.Value');
+      this.securityCustomHeaderName = headerNameReader.getResponseField('Parameter.Value');
+      this.secretArn = secretArnReader.getResponseField('Parameter.Value');
+      this.edgeFunctionVersionArn = edgeFnReader.getResponseField('Parameter.Value');
     }
 
     // Create DatabaseConstruct
@@ -548,7 +564,7 @@ export class ServerlessSpaConstruct extends Construct {
       ...props?.database,
       tableProps: {
         ...props?.database?.tableProps,
-        removalPolicy,
+        ...(removalPolicy !== undefined && { removalPolicy }),
       },
     });
 
@@ -576,8 +592,10 @@ export class ServerlessSpaConstruct extends Construct {
       ...props?.frontend,
       bucketProps: {
         ...props?.frontend?.bucketProps,
-        removalPolicy,
-        autoDeleteObjects,
+        ...(removalPolicy !== undefined && {
+          removalPolicy,
+          autoDeleteObjects: removalPolicy === RemovalPolicy.DESTROY,
+        }),
       },
       ...(props?.security && { webAclArn: this.webAclArn }),
       ...(props?.security &&
