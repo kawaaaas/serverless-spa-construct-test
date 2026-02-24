@@ -243,12 +243,14 @@ export class ApiConstruct extends Construct {
 
     if (useLambdaAuthorizer && this.authorizerFunction) {
       // Lambda Authorizer for custom header validation (and optionally JWT validation)
+      // Note: identitySources only includes Authorization header.
+      // The custom header (x-origin-verify) is validated inside the Lambda Authorizer,
+      // not as an identity source. Including it in identitySources would cause
+      // API Gateway to reject requests before the Authorizer is invoked if the
+      // header is missing from the initial request context.
       const lambdaAuthorizer = new RequestAuthorizer(this, 'LambdaAuthorizer', {
         handler: this.authorizerFunction,
-        identitySources: [
-          IdentitySource.header(this.customHeaderName),
-          IdentitySource.header('Authorization'),
-        ],
+        identitySources: [IdentitySource.header('Authorization')],
         resultsCacheTtl: Duration.seconds(0), // Disable API Gateway caching, use Lambda caching
       });
 
