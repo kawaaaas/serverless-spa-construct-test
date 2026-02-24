@@ -431,40 +431,41 @@ describe('ApiConstruct', () => {
   });
 
   describe('Cognito and Lambda Authorizer Combination', () => {
-    test('creates both Lambda Authorizer function and Cognito Authorizer when userPool and secretArn are provided', () => {
+    test('creates Lambda Authorizer (REQUEST type) when userPool and secretArn are provided', () => {
       const userPool = new UserPool(stack, 'UserPool');
       new ApiConstruct(stack, 'Api', {
         table,
         entry: 'lambda/handler.ts',
         userPool,
+        userPoolClientId: 'test-client-id',
         secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
       });
 
       const template = Template.fromStack(stack);
       // Should create 2 Lambda functions: Handler and AuthorizerHandler
       template.resourceCountIs('AWS::Lambda::Function', 2);
-      // Should create 1 Cognito Authorizer (Lambda Authorizer is a function, not API Gateway Authorizer)
+      // Should create 1 REQUEST Authorizer (Lambda Authorizer handles both custom header and JWT)
       template.resourceCountIs('AWS::ApiGateway::Authorizer', 1);
       template.hasResourceProperties('AWS::ApiGateway::Authorizer', {
-        Type: 'COGNITO_USER_POOLS',
+        Type: 'REQUEST',
       });
     });
 
-    test('uses Cognito Authorizer for methods when both are provided', () => {
+    test('uses CUSTOM AuthorizationType for methods when both are provided', () => {
       const userPool = new UserPool(stack, 'UserPool');
       new ApiConstruct(stack, 'Api', {
         table,
         entry: 'lambda/handler.ts',
         userPool,
+        userPoolClientId: 'test-client-id',
         secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
       });
 
       const template = Template.fromStack(stack);
-      // Cognito Authorizer is used for JWT validation
-      // Resource policy handles custom header validation
+      // Lambda Authorizer handles both custom header and JWT validation
       template.hasResourceProperties('AWS::ApiGateway::Method', {
         HttpMethod: 'ANY',
-        AuthorizationType: 'COGNITO_USER_POOLS',
+        AuthorizationType: 'CUSTOM',
       });
     });
 
@@ -474,6 +475,7 @@ describe('ApiConstruct', () => {
         table,
         entry: 'lambda/handler.ts',
         userPool,
+        userPoolClientId: 'test-client-id',
         secretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123',
       });
 

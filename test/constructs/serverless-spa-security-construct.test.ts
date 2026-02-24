@@ -21,7 +21,9 @@ describe('ServerlessSpaSecurityConstruct', () => {
       });
 
       expect(() => {
-        new ServerlessSpaSecurityConstruct(stack, 'Security');
+        ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
       }).toThrow(/must be deployed in us-east-1/);
     });
 
@@ -31,7 +33,9 @@ describe('ServerlessSpaSecurityConstruct', () => {
       });
 
       expect(() => {
-        new ServerlessSpaSecurityConstruct(stack, 'Security');
+        ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
       }).toThrow(/must be deployed in us-east-1/);
     });
 
@@ -43,7 +47,9 @@ describe('ServerlessSpaSecurityConstruct', () => {
       // Note: This test may fail during bundling due to CDK tokens in esbuild define
       // The region validation itself works correctly
       try {
-        new ServerlessSpaSecurityConstruct(stack, 'Security');
+        ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
       } catch (e) {
         // If the error is about bundling, the region validation passed
         if (e instanceof Error && e.message.includes('bundle')) {
@@ -60,7 +66,9 @@ describe('ServerlessSpaSecurityConstruct', () => {
       // Note: This test may fail during bundling due to CDK tokens in esbuild define
       // The region validation itself works correctly
       try {
-        new ServerlessSpaSecurityConstruct(stack, 'Security');
+        ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
       } catch (e) {
         // If the error is about bundling, the region validation passed
         if (e instanceof Error && e.message.includes('bundle')) {
@@ -72,27 +80,14 @@ describe('ServerlessSpaSecurityConstruct', () => {
   });
 
   describe('Output Properties', () => {
-    test('exposes webAclArn property', () => {
-      const stack = new Stack(app, 'TestStack', {
-        env: { region: 'us-east-1' },
-      });
-      try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
-        expect(security.webAclArn).toBeDefined();
-      } catch (e) {
-        if (e instanceof Error && e.message.includes('bundle')) {
-          return; // Skip - bundling issue
-        }
-        throw e;
-      }
-    });
-
     test('exposes secretArn property', () => {
       const stack = new Stack(app, 'TestStack', {
         env: { region: 'us-east-1' },
       });
       try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
+        const security = ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
         expect(security.secretArn).toBeDefined();
       } catch (e) {
         if (e instanceof Error && e.message.includes('bundle')) {
@@ -107,7 +102,9 @@ describe('ServerlessSpaSecurityConstruct', () => {
         env: { region: 'us-east-1' },
       });
       try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
+        const security = ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
         expect(security.customHeaderName).toBe('x-origin-verify');
       } catch (e) {
         if (e instanceof Error && e.message.includes('bundle')) {
@@ -117,12 +114,14 @@ describe('ServerlessSpaSecurityConstruct', () => {
       }
     });
 
-    test('exposes ssmPrefix property with default value', () => {
+    test('exposes ssmPrefix property with specified value', () => {
       const stack = new Stack(app, 'TestStack', {
         env: { region: 'us-east-1' },
       });
       try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
+        const security = ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
         expect(security.ssmPrefix).toBe('/myapp/security/');
       } catch (e) {
         if (e instanceof Error && e.message.includes('bundle')) {
@@ -137,8 +136,27 @@ describe('ServerlessSpaSecurityConstruct', () => {
         env: { region: 'us-east-1' },
       });
       try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
+        const security = ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
         expect(security.edgeFunctionVersionArn).toBeDefined();
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('bundle')) {
+          return;
+        }
+        throw e;
+      }
+    });
+
+    test('exposes webAclArn property when using withWaf', () => {
+      const stack = new Stack(app, 'TestStack', {
+        env: { region: 'us-east-1' },
+      });
+      try {
+        const security = ServerlessSpaSecurityConstruct.withWaf(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
+        expect(security.webAclArn).toBeDefined();
       } catch (e) {
         if (e instanceof Error && e.message.includes('bundle')) {
           return;
@@ -149,30 +167,16 @@ describe('ServerlessSpaSecurityConstruct', () => {
   });
 
   describe('Construct Instances', () => {
-    test('exposes waf construct instance', () => {
-      const stack = new Stack(app, 'TestStack', {
-        env: { region: 'us-east-1' },
-      });
-      try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
-        expect(security.waf).toBeDefined();
-        expect(security.waf.webAcl).toBeDefined();
-      } catch (e) {
-        if (e instanceof Error && e.message.includes('bundle')) {
-          return;
-        }
-        throw e;
-      }
-    });
-
     test('exposes secret construct instance', () => {
       const stack = new Stack(app, 'TestStack', {
         env: { region: 'us-east-1' },
       });
       try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
+        const security = ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
         expect(security.secret).toBeDefined();
-        expect(security.secret.secret).toBeDefined();
+        expect(security.secret!.secret).toBeDefined();
       } catch (e) {
         if (e instanceof Error && e.message.includes('bundle')) {
           return;
@@ -186,9 +190,11 @@ describe('ServerlessSpaSecurityConstruct', () => {
         env: { region: 'us-east-1' },
       });
       try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
+        const security = ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
         expect(security.ssm).toBeDefined();
-        expect(security.ssm.wafAclArnParameter).toBeDefined();
+        expect(security.ssm.ssmPrefix).toBe('/myapp/security/');
       } catch (e) {
         if (e instanceof Error && e.message.includes('bundle')) {
           return;
@@ -202,9 +208,46 @@ describe('ServerlessSpaSecurityConstruct', () => {
         env: { region: 'us-east-1' },
       });
       try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
+        const security = ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
         expect(security.lambdaEdge).toBeDefined();
-        expect(security.lambdaEdge.edgeFunction).toBeDefined();
+        expect(security.lambdaEdge!.edgeFunction).toBeDefined();
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('bundle')) {
+          return;
+        }
+        throw e;
+      }
+    });
+
+    test('exposes waf construct instance when using withWaf', () => {
+      const stack = new Stack(app, 'TestStack', {
+        env: { region: 'us-east-1' },
+      });
+      try {
+        const security = ServerlessSpaSecurityConstruct.withWaf(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
+        expect(security.waf).toBeDefined();
+        expect(security.waf!.webAcl).toBeDefined();
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('bundle')) {
+          return;
+        }
+        throw e;
+      }
+    });
+
+    test('waf is undefined when using minimal', () => {
+      const stack = new Stack(app, 'TestStack', {
+        env: { region: 'us-east-1' },
+      });
+      try {
+        const security = ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
+        expect(security.waf).toBeUndefined();
       } catch (e) {
         if (e instanceof Error && e.message.includes('bundle')) {
           return;
@@ -215,28 +258,15 @@ describe('ServerlessSpaSecurityConstruct', () => {
   });
 
   describe('Convenience Properties Match', () => {
-    test('webAclArn matches waf.webAclArn', () => {
-      const stack = new Stack(app, 'TestStack', {
-        env: { region: 'us-east-1' },
-      });
-      try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
-        expect(security.webAclArn).toBe(security.waf.webAclArn);
-      } catch (e) {
-        if (e instanceof Error && e.message.includes('bundle')) {
-          return;
-        }
-        throw e;
-      }
-    });
-
     test('secretArn matches secret.secretArn', () => {
       const stack = new Stack(app, 'TestStack', {
         env: { region: 'us-east-1' },
       });
       try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
-        expect(security.secretArn).toBe(security.secret.secretArn);
+        const security = ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
+        expect(security.secretArn).toBe(security.secret!.secretArn);
       } catch (e) {
         if (e instanceof Error && e.message.includes('bundle')) {
           return;
@@ -250,8 +280,10 @@ describe('ServerlessSpaSecurityConstruct', () => {
         env: { region: 'us-east-1' },
       });
       try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
-        expect(security.customHeaderName).toBe(security.secret.customHeaderName);
+        const security = ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
+        expect(security.customHeaderName).toBe(security.secret!.customHeaderName);
       } catch (e) {
         if (e instanceof Error && e.message.includes('bundle')) {
           return;
@@ -265,7 +297,9 @@ describe('ServerlessSpaSecurityConstruct', () => {
         env: { region: 'us-east-1' },
       });
       try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
+        const security = ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
         expect(security.ssmPrefix).toBe(security.ssm.ssmPrefix);
       } catch (e) {
         if (e instanceof Error && e.message.includes('bundle')) {
@@ -280,10 +314,29 @@ describe('ServerlessSpaSecurityConstruct', () => {
         env: { region: 'us-east-1' },
       });
       try {
-        const security = new ServerlessSpaSecurityConstruct(stack, 'Security');
+        const security = ServerlessSpaSecurityConstruct.minimal(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
         expect(security.edgeFunctionVersionArn).toBe(
-          security.lambdaEdge.functionVersion.functionArn
+          security.lambdaEdge!.functionVersion.functionArn
         );
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('bundle')) {
+          return;
+        }
+        throw e;
+      }
+    });
+
+    test('webAclArn matches waf.webAclArn when using withWaf', () => {
+      const stack = new Stack(app, 'TestStack', {
+        env: { region: 'us-east-1' },
+      });
+      try {
+        const security = ServerlessSpaSecurityConstruct.withWaf(stack, 'Security', {
+          ssmPrefix: '/myapp/security/',
+        });
+        expect(security.webAclArn).toBe(security.waf!.webAclArn);
       } catch (e) {
         if (e instanceof Error && e.message.includes('bundle')) {
           return;

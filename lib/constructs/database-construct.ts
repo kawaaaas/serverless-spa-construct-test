@@ -97,7 +97,7 @@ export class DatabaseConstruct extends Construct {
       sortKey,
       billingMode: BillingMode.PAY_PER_REQUEST,
       removalPolicy: RemovalPolicy.DESTROY,
-      pointInTimeRecovery: false,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: false },
       ...props?.tableProps,
     };
 

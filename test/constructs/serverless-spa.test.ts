@@ -2,7 +2,7 @@ import { App, RemovalPolicy, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { AttributeType } from 'aws-cdk-lib/aws-dynamodb';
 import * as path from 'path';
-import { ServerlessSpa } from '../../lib/constructs/serverless-spa';
+import { ServerlessSpaConstruct as ServerlessSpa } from '../../lib/constructs/serverless-spa';
 
 // Test Lambda handler path
 const TEST_LAMBDA_ENTRY = path.join(__dirname, '../../lambda/handler.ts');
